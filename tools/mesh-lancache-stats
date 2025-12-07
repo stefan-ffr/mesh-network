@@ -1,0 +1,11 @@
+#!/bin/bash
+# LANcache Statistics
+
+echo "╔═══════════════════════════════════════════════╗"
+echo "║         LANcache Statistics                   ║"
+echo "╚═══════════════════════════════════════════════╝"
+echo
+
+echo "Cache Size: $(du -sh /data/lancache/cache 2>/dev/null | cut -f1)"
+echo "Docker Status:"
+docker ps --format "  {{.Names}}: {{.Status}}" | grep lancache 2>/dev/null || echo "  LANcache not running"

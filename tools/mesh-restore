@@ -1,0 +1,14 @@
+#!/bin/bash
+# Configuration Restore
+
+if [ -z "$1" ]; then
+    echo "Available backups:"
+    ls -lh /var/backups/mesh-network/
+    echo
+    echo "Usage: mesh-restore <backup-file>"
+    exit 0
+fi
+
+echo "Restoring from: $1"
+tar -xzf "$1" -C /
+echo "✓ Restore complete - reboot recommended"

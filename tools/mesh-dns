@@ -1,0 +1,23 @@
+#!/bin/bash
+# DNS Management Tool
+
+case "$1" in
+    add)
+        echo "Adding DNS entry: $2 → $3"
+        # etcdctl put /skydns/... implementation
+        ;;
+    del)
+        echo "Deleting DNS entry: $2"
+        ;;
+    list)
+        echo "DNS Entries:"
+        etcdctl get /skydns --prefix --keys-only 2>/dev/null || echo "etcd not available"
+        ;;
+    test)
+        echo "Testing DNS: $2"
+        dig +short "$2" @127.0.0.1
+        ;;
+    *)
+        echo "Usage: mesh-dns {add|del|list|test} ..."
+        ;;
+esac

@@ -1,0 +1,43 @@
+version: '3'
+
+services:
+  lancache-dns:
+    image: lancachenet/lancache-dns:latest
+    container_name: lancache-dns
+    restart: unless-stopped
+    environment:
+      - LANCACHE_IP=10.99.99.1
+      - UPSTREAM_DNS=127.0.0.1
+    network_mode: host
+
+  lancache:
+    image: lancachenet/monolithic:latest
+    container_name: lancache
+    restart: unless-stopped
+    environment:
+      - CACHE_MAX_AGE=3650d
+      - CACHE_DISK_SIZE=500g
+      - CACHE_INDEX_SIZE=500m
+      - CACHE_MEM_SIZE=4g
+      - BIND_IP=10.99.99.1
+    volumes:
+      - /data/lancache/cache:/data/cache
+      - /data/lancache/logs:/data/logs
+    network_mode: host
+
+  sniproxy:
+    image: lancachenet/sniproxy:latest
+    container_name: sniproxy
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - lancache
+
+  lancache-ui:
+    image: lancachenet/lancache-ui:latest
+    container_name: lancache-ui
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /data/lancache/logs:/logs:ro

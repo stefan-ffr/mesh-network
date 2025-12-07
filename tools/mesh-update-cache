@@ -1,0 +1,18 @@
+#!/bin/bash
+# Update Cache Management
+
+case "$1" in
+    stats)
+        echo "Cache Statistics:"
+        echo "  APT: $(du -sh /var/cache/apt-cacher-ng 2>/dev/null | cut -f1)"
+        echo "  Squid: $(du -sh /var/spool/squid 2>/dev/null | cut -f1)"
+        ;;
+    health)
+        echo "Cache Health:"
+        systemctl is-active --quiet apt-cacher-ng && echo "  ✓ apt-cacher-ng" || echo "  ✗ apt-cacher-ng"
+        systemctl is-active --quiet squid && echo "  ✓ Squid" || echo "  ✗ Squid"
+        ;;
+    *)
+        echo "Usage: mesh-update-cache {stats|health|clients}"
+        ;;
+esac

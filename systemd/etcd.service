@@ -1,0 +1,15 @@
+[Unit]
+Description=etcd distributed key-value store
+After=network.target frr.service
+Requires=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/start-etcd-dynamic.sh
+Restart=on-failure
+RestartSec=10
+User=etcd
+Group=etcd
+
+[Install]
+WantedBy=multi-user.target

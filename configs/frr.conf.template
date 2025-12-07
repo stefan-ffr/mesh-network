@@ -1,0 +1,26 @@
+hostname {{HOSTNAME}}
+log syslog informational
+
+ip forwarding
+
+router ospf
+  network 169.254.0.0/16 area 0
+  {{#IF_ANYCAST}}network 10.99.99.1/32 area 0{{/IF_ANYCAST}}
+  {{#IF_GATEWAY}}default-information originate always metric {{METRIC}}{{/IF_GATEWAY}}
+
+interface {{MESH_INTERFACE}}
+  ip ospf network point-to-multipoint
+  ip ospf hello-interval 10
+  ip ospf dead-interval 40
+  ip ospf cost 10
+
+{{#IF_LAN}}
+interface {{LAN_INTERFACE}}
+  ip ospf passive
+{{/IF_LAN}}
+
+{{#IF_ANYCAST}}
+interface lo
+  ip ospf network point-to-point
+  ip ospf cost {{ANYCAST_COST}}
+{{/IF_ANYCAST}}

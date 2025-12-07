@@ -1,0 +1,15 @@
+#!/bin/bash
+# Anycast Status Check
+
+echo "╔═══════════════════════════════════════════════╗"
+echo "║         Anycast Status                        ║"
+echo "╚═══════════════════════════════════════════════╝"
+echo
+
+echo "Anycast Routes:"
+vtysh -c "show ip route 10.99.99.1" 2>/dev/null || echo "FRR not running"
+
+echo
+echo "Reachability:"
+timeout 2 bash -c "cat < /dev/null > /dev/tcp/10.99.99.1/3142" 2>/dev/null && echo "  ✓ APT Cache (3142)" || echo "  ✗ APT Cache unreachable"
+timeout 2 bash -c "cat < /dev/null > /dev/tcp/10.99.99.1/3128" 2>/dev/null && echo "  ✓ Squid (3128)" || echo "  ✗ Squid unreachable"

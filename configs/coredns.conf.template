@@ -1,0 +1,10 @@
+mesh.test:5353 {
+    bind 127.0.0.1
+    etcd {
+        path /skydns
+        endpoint http://127.0.0.1:2379
+        fallthrough
+    }
+    cache 30
+    log
+}

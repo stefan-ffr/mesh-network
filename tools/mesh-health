@@ -1,0 +1,18 @@
+#!/bin/bash
+# Mesh Health Check
+
+echo "╔═══════════════════════════════════════════════╗"
+echo "║         Mesh Network Health Check             ║"
+echo "╚═══════════════════════════════════════════════╝"
+echo
+
+# FRR
+systemctl is-active --quiet frr && echo "✓ FRR: Running" || echo "✗ FRR: Stopped"
+
+# etcd
+systemctl is-active --quiet etcd && echo "✓ etcd: Running" || echo "✗ etcd: Stopped"
+
+# OSPF Neighbors
+echo
+echo "OSPF Neighbors:"
+vtysh -c "show ip ospf neighbor" 2>/dev/null || echo "  (FRR not running)"

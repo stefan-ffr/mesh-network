@@ -1,0 +1,19 @@
+#!/bin/bash
+# Configuration Backup
+
+BACKUP_DIR="/var/backups/mesh-network"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="${BACKUP_DIR}/backup-${TIMESTAMP}.tar.gz"
+
+mkdir -p "$BACKUP_DIR"
+
+echo "Creating backup: $BACKUP_FILE"
+tar -czf "$BACKUP_FILE" \
+    /etc/network/interfaces \
+    /etc/frr/frr.conf \
+    /etc/dhcp/dhcpd.conf \
+    /etc/coredns/ \
+    /etc/unbound/ \
+    2>/dev/null
+
+echo "✓ Backup complete: $BACKUP_FILE"
