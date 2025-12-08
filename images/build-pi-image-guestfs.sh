@@ -10,6 +10,11 @@ BUILD_DIR="${SCRIPT_DIR}/build"
 OUTPUT_DIR="${SCRIPT_DIR}/output"
 CACHE_DIR="${SCRIPT_DIR}/cache"
 
+# libguestfs configuration for CI environments
+export LIBGUESTFS_BACKEND=direct
+export LIBGUESTFS_DEBUG=1
+export LIBGUESTFS_TRACE=1
+
 # Image configuration
 BASE_IMAGE_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2024-11-19/2024-11-19-raspios-bookworm-arm64-lite.img.xz"
 BASE_IMAGE_NAME="raspios-bookworm-arm64-lite.img"
@@ -89,18 +94,10 @@ create_work_image() {
     # Copy base image
     cp "${CACHE_DIR}/${BASE_IMAGE_NAME}" "${work_image}"
 
-    # Resize image to 8GB using qemu-img (no loop device needed)
-    log "Resizing image to 8GB..."
-    qemu-img resize -f raw "${work_image}" 8G
-
-    # Resize the root partition using guestfish
-    log "Expanding root partition..."
-    guestfish --rw -a "${work_image}" <<EOF
-run
-part-resize /dev/sda 2 -1
-e2fsck-f /dev/sda2
-resize2fs /dev/sda2
-EOF
+    # Note: We skip resizing here - Raspberry Pi OS automatically
+    # expands the filesystem on first boot via raspi-config/init_resize.sh
+    # This avoids needing guestfish/libguestfs appliance which doesn't
+    # work well in GitHub Actions due to missing kernel
 
     echo "${work_image}"
 }

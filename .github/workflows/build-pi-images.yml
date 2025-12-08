@@ -1,7 +1,7 @@
 name: Build Raspberry Pi Images
 
-# This workflow uses libguestfs (virt-customize) to build images
-# without requiring loop device support. This works in GitHub Actions!
+# This workflow uses pi-gen to build custom Raspberry Pi OS images
+# pi-gen runs in a Docker container with proper privileges
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
       node_type:
         description: 'Node type to build (or "all")'
         required: true
-        default: 'all'
+        default: 'monitoring'
         type: choice
         options:
           - all
@@ -30,16 +30,13 @@ env:
   MESH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
-  build-matrix:
-    name: Build Image - ${{ matrix.node_type }}
+  build:
+    name: Build Pi Image - ${{ matrix.node_type }}
     runs-on: ubuntu-latest
-    if: github.event.inputs.node_type != 'all'
-
     strategy:
       fail-fast: false
       matrix:
-        node_type:
-          - ${{ github.event.inputs.node_type }}
+        node_type: ${{ github.event.inputs.node_type == 'all' && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type || 'monitoring')) }}
 
     steps:
       - name: Checkout repository
@@ -50,102 +47,163 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          docker system prune -af
           sudo df -h
 
-      - name: Install dependencies
+      - name: Prepare pi-gen config
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            wget xz-utils \
-            qemu-user-static qemu-utils \
-            libguestfs-tools guestfs-tools
+          mkdir -p pi-gen-config/stage-mesh/00-mesh-packages/files
 
-          # Verify libguestfs works
-          echo "Testing libguestfs..."
-          libguestfs-test-tool --timeout 60 || echo "libguestfs test completed"
+          # Create package installation script
+          cat > pi-gen-config/stage-mesh/00-mesh-packages/00-run.sh << 'SCRIPT'
+          #!/bin/bash -e
 
-      - name: Build Raspberry Pi Image
-        run: |
-          cd images
-          chmod +x build-pi-image-guestfs.sh
-          # No sudo needed - libguestfs works in userspace!
-          ./build-pi-image-guestfs.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
+          on_chroot << EOF
+          # Update system
+          apt-get update
+          apt-get upgrade -y
 
-      - name: List output files
-        run: |
-          ls -lh images/output/
-          cat images/output/*.sha256
+          # Install common packages
+          apt-get install -y \
+            git curl wget \
+            python3 python3-pip python3-venv \
+            network-manager \
+            iptables iproute2 \
+            frr \
+            etcd-server etcd-client \
+            vim nano \
+            htop tmux
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+          # Configure FRR
+          cat > /etc/frr/daemons << 'FRRCONF'
+          frr=yes
+          zebra=yes
+          ospfd=yes
+          FRRCONF
+          systemctl enable frr
+
+          # Configure etcd
+          systemctl enable etcd
+
+          # Enable SSH
+          systemctl enable ssh
+          EOF
+          SCRIPT
+          chmod +x pi-gen-config/stage-mesh/00-mesh-packages/00-run.sh
+
+          # Create node-type specific script
+          cat > pi-gen-config/stage-mesh/00-mesh-packages/01-run.sh << 'SCRIPT'
+          #!/bin/bash -e
+
+          NODE_TYPE="${NODE_TYPE:-monitoring}"
+
+          on_chroot << EOF
+          case "${NODE_TYPE}" in
+            mesh-router|gateway-wifi)
+              apt-get install -y wpasupplicant hostapd wireless-tools iw
+              ;;
+            gateway-*)
+              apt-get install -y dnsmasq fail2ban
+              ;;
+            update-cache)
+              apt-get install -y apt-cacher-ng
+              curl -fsSL https://get.docker.com | sh
+              usermod -aG docker pi || true
+              systemctl enable docker
+              ;;
+            monitoring)
+              apt-get install -y postgresql-client openssh-client snmp
+              curl -fsSL https://get.docker.com | sh
+              usermod -aG docker pi || true
+              systemctl enable docker
+              ;;
+          esac
+
+          # Create mesh network directory
+          mkdir -p /opt/mesh-network
+
+          # Write version info
+          cat > /etc/mesh-network-version << VEREOF
+          MESH_NETWORK_VERSION=${MESH_VERSION:-1.0.0}
+          NODE_TYPE=${NODE_TYPE}
+          BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          ARCH=arm64
+          VEREOF
+
+          # Cleanup
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+          EOF
+          SCRIPT
+          chmod +x pi-gen-config/stage-mesh/00-mesh-packages/01-run.sh
+
+          # Copy mesh network files
+          cp -r scripts pi-gen-config/stage-mesh/00-mesh-packages/files/ 2>/dev/null || mkdir -p pi-gen-config/stage-mesh/00-mesh-packages/files/scripts
+          cp -r configs pi-gen-config/stage-mesh/00-mesh-packages/files/ 2>/dev/null || mkdir -p pi-gen-config/stage-mesh/00-mesh-packages/files/configs
+          cp -r systemd pi-gen-config/stage-mesh/00-mesh-packages/files/ 2>/dev/null || mkdir -p pi-gen-config/stage-mesh/00-mesh-packages/files/systemd
+
+          # Create file copy script
+          cat > pi-gen-config/stage-mesh/00-mesh-packages/02-run.sh << 'SCRIPT'
+          #!/bin/bash -e
+
+          # Copy mesh network files to image
+          if [ -d "${ROOTFS_DIR}/opt/mesh-network" ]; then
+            cp -r files/scripts/* "${ROOTFS_DIR}/opt/mesh-network/" 2>/dev/null || true
+            cp -r files/configs "${ROOTFS_DIR}/opt/mesh-network/" 2>/dev/null || true
+            cp files/systemd/*.service "${ROOTFS_DIR}/etc/systemd/system/" 2>/dev/null || true
+            cp files/systemd/*.timer "${ROOTFS_DIR}/etc/systemd/system/" 2>/dev/null || true
+          fi
+          SCRIPT
+          chmod +x pi-gen-config/stage-mesh/00-mesh-packages/02-run.sh
+
+          # Mark stage for inclusion
+          touch pi-gen-config/stage-mesh/EXPORT_IMAGE
+          touch pi-gen-config/stage-mesh/EXPORT_NOOBS
+
+      - name: Build with pi-gen
+        uses: usimd/pi-gen-action@v1
+        id: build
         with:
-          name: mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-arm64
-          path: |
-            images/output/*.img.xz
-            images/output/*.sha256
-          retention-days: 30
-          compression-level: 0  # Already compressed
-
-      - name: Upload to Release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            images/output/*.img.xz
-            images/output/*.sha256
+          image-name: mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}
+          stage-list: stage0 stage1 stage2 ./pi-gen-config/stage-mesh
+          enable-noobs: false
+          compression: xz
+          compression-level: 9
+          locale: en_US.UTF-8
+          hostname: mesh-${{ matrix.node_type }}
+          keyboard-keymap: us
+          keyboard-layout: English (US)
+          timezone: Etc/UTC
+          username: pi
+          password: raspberry
+          wpa-essid: ''
+          wpa-password: ''
+          enable-ssh: 1
+          pubkey-only-ssh: 0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_TYPE: ${{ matrix.node_type }}
+          MESH_VERSION: ${{ env.MESH_VERSION }}
 
-  build-all:
-    name: Build All Images
-    runs-on: ubuntu-latest
-    if: github.event.inputs.node_type == 'all' || github.event_name == 'release'
-
-    strategy:
-      fail-fast: false
-      matrix:
-        node_type:
-          - mesh-router
-          - lan-router
-          - gateway-wifi
-          - gateway-wired
-          - update-cache
-          - monitoring
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Free up disk space
+      - name: Rename and checksum
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo df -h
+          mkdir -p images/output
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            wget xz-utils \
-            qemu-user-static qemu-utils \
-            libguestfs-tools guestfs-tools
+          # Find the built image
+          IMAGE_FILE=$(find ${{ steps.build.outputs.image-path }} -name "*.img.xz" | head -1)
 
-          # Verify libguestfs works
-          echo "Testing libguestfs..."
-          libguestfs-test-tool --timeout 60 || echo "libguestfs test completed"
-
-      - name: Build Raspberry Pi Image - ${{ matrix.node_type }}
-        run: |
-          cd images
-          chmod +x build-pi-image-guestfs.sh
-          # No sudo needed - libguestfs works in userspace!
-          ./build-pi-image-guestfs.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
-
-      - name: List output files
-        run: |
-          ls -lh images/output/
-          cat images/output/*.sha256 || true
+          if [ -n "$IMAGE_FILE" ]; then
+            OUTPUT_NAME="mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-arm64.img.xz"
+            cp "$IMAGE_FILE" "images/output/${OUTPUT_NAME}"
+            cd images/output
+            sha256sum "${OUTPUT_NAME}" > "${OUTPUT_NAME}.sha256"
+            ls -lh
+            cat *.sha256
+          else
+            echo "Error: No image file found!"
+            find ${{ steps.build.outputs.image-path }} -type f
+            exit 1
+          fi
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
@@ -170,7 +228,7 @@ jobs:
   create-manifest:
     name: Create Release Manifest
     runs-on: ubuntu-latest
-    needs: [build-all]
+    needs: [build]
     if: github.event_name == 'release' || github.event.inputs.node_type == 'all'
 
     steps:
@@ -238,7 +296,7 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-all]
+    needs: [build]
     if: always()
 
     steps:
