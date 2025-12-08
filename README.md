@@ -38,7 +38,33 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 
 ## 🚀 Quick Start
 
-### One-Line Installation
+### Raspberry Pi Images (Easiest!)
+
+Pre-built images for Raspberry Pi 4 and 5:
+
+```bash
+# Download image (choose your node type)
+wget https://github.com/YOUR-USERNAME/mesh-network/releases/latest/download/mesh-network-monitoring-1.0.0-arm64.img.xz
+
+# Verify checksum
+wget https://github.com/YOUR-USERNAME/mesh-network/releases/latest/download/mesh-network-monitoring-1.0.0-arm64.img.xz.sha256
+sha256sum -c mesh-network-monitoring-1.0.0-arm64.img.xz.sha256
+
+# Extract and flash to SD card
+xz -d mesh-network-monitoring-1.0.0-arm64.img.xz
+sudo dd if=mesh-network-monitoring-1.0.0-arm64.img of=/dev/sdX bs=4M status=progress
+```
+
+**Available images:**
+- `mesh-router` - WiFi mesh router
+- `monitoring` - Monitoring node
+- `update-cache` - Update cache server
+- `gateway-wifi` / `gateway-wired` - Internet gateways
+- `lan-router` - Wired router
+
+See [Raspberry Pi Images Guide](docs/raspberry-pi-images.md) for detailed instructions.
+
+### One-Line Installation (Any Linux)
 ```bash
 curl -sSL https://raw.githubusercontent.com/YOUR-USERNAME/mesh-network/main/install.sh | sudo bash
 ```
@@ -96,6 +122,7 @@ The installer will guide you through:
 ## 📖 Documentation
 
 - [Installation Guide](docs/installation.md)
+- [Raspberry Pi Images](docs/raspberry-pi-images.md) - Pre-built images for Pi 4 & 5
 - [Node Types Explained](docs/node-types.md)
 - [OSPF Configuration](docs/ospf.md)
 - [DNS Architecture](docs/dns.md)
