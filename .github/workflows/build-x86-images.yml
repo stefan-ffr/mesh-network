@@ -1,0 +1,314 @@
+name: Build x86/64 Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_type:
+        description: 'Node type to build (or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - mesh-router
+          - lan-router
+          - gateway-wifi
+          - gateway-wired
+          - update-cache
+          - monitoring
+      version:
+        description: 'Image version'
+        required: true
+        default: '1.0.0'
+      build_method:
+        description: 'Build method'
+        required: true
+        default: 'packer'
+        type: choice
+        options:
+          - packer
+          - script
+  release:
+    types: [published]
+
+env:
+  MESH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+  BUILD_METHOD: ${{ github.event.inputs.build_method || 'packer' }}
+
+jobs:
+  build-packer:
+    name: Build x86/64 - ${{ matrix.node_type }} (Packer)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.build_method == 'packer' || github.event_name == 'release'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node_type: ${{ github.event.inputs.node_type == 'all' && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type)) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          docker system prune -af
+          sudo df -h
+
+      - name: Install dependencies
+        run: |
+          # Install QEMU and KVM
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-kvm \
+            qemu-utils \
+            libvirt-daemon-system \
+            libvirt-clients \
+            bridge-utils \
+            virtinst \
+            libguestfs-tools
+
+          # Enable KVM
+          sudo modprobe kvm
+          sudo modprobe kvm_intel || sudo modprobe kvm_amd || true
+
+      - name: Install Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: "latest"
+
+      - name: Initialize Packer
+        run: |
+          cd images/packer
+          packer init x86-64.pkr.hcl
+
+      - name: Build with Packer
+        run: |
+          cd images/packer
+          packer build \
+            -var="node_type=${{ matrix.node_type }}" \
+            -var="mesh_version=${{ env.MESH_VERSION }}" \
+            -only=qemu.mesh_network \
+            x86-64.pkr.hcl
+
+      - name: List output files
+        run: |
+          ls -lh images/packer/output/
+          find images/packer/output/ -name "*.sha256" -exec cat {} \;
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64-packer
+          path: |
+            images/packer/output/*.tar.xz
+            images/packer/output/*.sha256
+          retention-days: 30
+
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            images/packer/output/*.tar.xz
+            images/packer/output/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-script:
+    name: Build x86/64 - ${{ matrix.node_type }} (Script)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.build_method == 'script'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node_type: ${{ github.event.inputs.node_type == 'all' && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type)) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          docker system prune -af
+          sudo df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-kvm qemu-utils \
+            libvirt-daemon-system libvirt-clients \
+            virtinst virt-manager \
+            libguestfs-tools \
+            genisoimage \
+            rsync
+
+      - name: Build x86/64 Image - ${{ matrix.node_type }}
+        run: |
+          cd images
+          chmod +x build-x86-image.sh
+          sudo ./build-x86-image.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
+
+      - name: List output files
+        run: |
+          ls -lh images/output/
+          find images/output/ -name "*.sha256" -exec cat {} \;
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64-script
+          path: |
+            images/output/*.xz
+            images/output/*.sha256
+          retention-days: 30
+
+  create-manifest:
+    name: Create x86/64 Manifest
+    runs-on: ubuntu-latest
+    needs: [build-packer]
+    if: always() && (github.event_name == 'release' || github.event.inputs.node_type == 'all')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create manifest
+        run: |
+          cat > manifest-x86.json << EOF
+          {
+            "version": "${{ env.MESH_VERSION }}",
+            "arch": "x86_64",
+            "build_date": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+            "images": [
+          EOF
+
+          first=true
+          for dir in artifacts/mesh-network-*-x86_64-*; do
+            if [ -d "$dir" ]; then
+              node_type=$(basename "$dir" | sed 's/mesh-network-\(.*\)-.*-x86_64.*/\1/')
+
+              # Find all image files
+              for image_file in "$dir"/*.tar.xz; do
+                if [ -f "$image_file" ]; then
+                  sha256_file="${image_file}.sha256"
+                  if [ -f "$sha256_file" ]; then
+                    size=$(stat -c%s "$image_file")
+                    sha256=$(cat "$sha256_file" | awk '{print $1}')
+                    format=$(basename "$image_file" | sed 's/.*-\(.*\)\.tar\.xz/\1/')
+
+                    if [ "$first" = true ]; then
+                      first=false
+                    else
+                      echo "," >> manifest-x86.json
+                    fi
+
+                    cat >> manifest-x86.json << ITEM
+              {
+                "node_type": "$node_type",
+                "format": "$format",
+                "filename": "$(basename $image_file)",
+                "size": $size,
+                "sha256": "$sha256"
+              }
+          ITEM
+                  fi
+                fi
+              done
+            fi
+          done
+
+          cat >> manifest-x86.json << EOF
+            ]
+          }
+          EOF
+
+          cat manifest-x86.json
+
+      - name: Upload manifest
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: manifest-x86.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-packer, build-script]
+    if: always()
+
+    steps:
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          # x86/64 Image Build Summary
+
+          ## Images Built
+          - Mesh Router (WiFi + LAN)
+          - LAN Router (Wired)
+          - Gateway WiFi
+          - Gateway Wired
+          - Update Cache (LANcache)
+          - Monitoring Node (Docker)
+
+          ## Available Formats
+          - **QCOW2** - QEMU/KVM (Linux)
+          - **RAW** - dd, bare metal
+          - **VMDK** - VMware Workstation/ESXi
+          - **VDI** - VirtualBox
+          - **VHD** - Microsoft Hyper-V
+
+          ## Download
+          Check the Artifacts section above or the Release page.
+
+          ## Usage
+
+          ### QEMU/KVM
+          ```bash
+          xz -d mesh-network-monitoring-1.0.0-x86_64.qcow2.xz
+          qemu-system-x86_64 -m 2048 -hda mesh-network-monitoring-1.0.0-x86_64.qcow2
+          ```
+
+          ### VMware
+          ```bash
+          xz -d mesh-network-monitoring-1.0.0-x86_64.vmdk.xz
+          # Import into VMware Workstation/ESXi
+          ```
+
+          ### VirtualBox
+          ```bash
+          xz -d mesh-network-monitoring-1.0.0-x86_64.vdi.xz
+          # Import into VirtualBox
+          ```
+
+          ### Bare Metal (dd)
+          ```bash
+          xz -d mesh-network-monitoring-1.0.0-x86_64.img.xz
+          sudo dd if=mesh-network-monitoring-1.0.0-x86_64.img of=/dev/sdX bs=4M status=progress
+          ```
+
+          ## First Boot
+          - Username: `mesh`
+          - Password: `mesh`
+          - Root password: `mesh`
+          - SSH enabled by default
+          - Run: `/opt/mesh-network/setup.sh`
+
+          EOF
