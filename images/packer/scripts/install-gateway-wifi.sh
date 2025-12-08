@@ -7,24 +7,24 @@ export DEBIAN_FRONTEND=noninteractive
 echo "=== Installing WiFi gateway packages ==="
 
 # WiFi tools
-apt-get install -y \
+sudo apt-get install -y \
     wpasupplicant \
     hostapd \
     wireless-tools \
     iw \
-    crda
+    crda || sudo apt-get install -y wpasupplicant hostapd wireless-tools iw
 
 # Gateway/firewall tools
-apt-get install -y \
+sudo apt-get install -y \
     iptables-persistent \
     fail2ban \
     dnsmasq
 
 # Enable hostapd for WiFi AP
-systemctl unmask hostapd
-systemctl enable hostapd
+sudo systemctl unmask hostapd || true
+sudo systemctl enable hostapd || true
 
 # Enable fail2ban
-systemctl enable fail2ban
+sudo systemctl enable fail2ban || true
 
 echo "=== WiFi gateway packages installed successfully ==="

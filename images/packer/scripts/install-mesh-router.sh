@@ -7,22 +7,22 @@ export DEBIAN_FRONTEND=noninteractive
 echo "=== Installing mesh router packages ==="
 
 # WiFi tools
-apt-get install -y \
+sudo apt-get install -y \
     wpasupplicant \
     hostapd \
     wireless-tools \
     iw \
-    crda
+    crda || sudo apt-get install -y wpasupplicant hostapd wireless-tools iw
 
 # DHCP server
-apt-get install -y \
+sudo apt-get install -y \
     isc-dhcp-server
 
 # Enable hostapd for WiFi AP
-systemctl unmask hostapd
-systemctl enable hostapd
+sudo systemctl unmask hostapd || true
+sudo systemctl enable hostapd || true
 
 # Enable DHCP server
-systemctl enable isc-dhcp-server
+sudo systemctl enable isc-dhcp-server || true
 
 echo "=== Mesh router packages installed successfully ==="

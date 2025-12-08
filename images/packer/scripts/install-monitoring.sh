@@ -8,14 +8,14 @@ echo "=== Installing monitoring node packages ==="
 
 # Docker (for containerized monitoring)
 echo "Installing Docker..."
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker pi
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker mesh || sudo usermod -aG docker $USER || true
 
 # Docker Compose
-apt-get install -y docker-compose-plugin
+sudo apt-get install -y docker-compose-plugin
 
 # Monitoring tools
-apt-get install -y \
+sudo apt-get install -y \
     postgresql-client \
     snmp \
     snmpd \
@@ -23,20 +23,20 @@ apt-get install -y \
     python3-paramiko
 
 # System monitoring
-apt-get install -y \
+sudo apt-get install -y \
     sysstat \
     iotop \
     iftop \
     nload
 
 # Enable services
-systemctl enable docker
-systemctl enable ssh
+sudo systemctl enable docker
+sudo systemctl enable ssh
 
-# Pull monitoring containers
-docker pull postgres:16-alpine
-docker pull nginx:alpine
-docker pull grafana/grafana:latest || true
-docker pull prom/prometheus:latest || true
+# Pull monitoring containers (optional, may timeout)
+sudo docker pull postgres:16-alpine || true
+sudo docker pull nginx:alpine || true
+sudo docker pull grafana/grafana:latest || true
+sudo docker pull prom/prometheus:latest || true
 
 echo "=== Monitoring packages installed successfully ==="
