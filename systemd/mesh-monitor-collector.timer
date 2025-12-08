@@ -1,0 +1,11 @@
+[Unit]
+Description=Mesh Network Monitor - Metrics Collection Timer
+Requires=mesh-monitor-collector.service
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=30s
+Unit=mesh-monitor-collector.service
+
+[Install]
+WantedBy=timers.target

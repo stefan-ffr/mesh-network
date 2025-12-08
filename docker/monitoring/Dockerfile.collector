@@ -1,0 +1,45 @@
+# Mesh Network Monitoring Node - Collector
+FROM python:3.11-slim
+
+LABEL maintainer="mesh-network"
+LABEL description="Mesh Network Metrics Collector with SSH monitoring"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    openssh-client \
+    iputils-ping \
+    snmp \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd -r -s /bin/bash -u 1000 mesh-monitor
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application files
+COPY mesh_monitor.py .
+COPY notifications.py .
+COPY collector.py .
+
+# Create SSH key directory
+RUN mkdir -p /home/mesh-monitor/.ssh && \
+    chown mesh-monitor:mesh-monitor /home/mesh-monitor/.ssh && \
+    chmod 700 /home/mesh-monitor/.ssh
+
+# Create data directory
+RUN mkdir -p /data && chown mesh-monitor:mesh-monitor /data
+
+# Switch to non-root user
+USER mesh-monitor
+
+# Health check - ensure collector is running
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+  CMD pgrep -f collector.py || exit 1
+
+# Start collector
+CMD ["python3", "collector.py"]

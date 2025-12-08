@@ -34,6 +34,7 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 | **Gateway (WiFi)** | WiFi mesh + WAN | 1 WiFi + 1 WAN port | Internet access with WiFi mesh |
 | **Gateway (Wired)** | Wired to mesh + WAN | 2+ Ethernet ports | Internet access via wired connection |
 | **Update Cache** | LANcache + apt-cacher-ng + Squid | 50-500GB storage | Bandwidth savings (85-95%) |
+| **Monitoring Node** | Network monitoring + alerts | 2GB RAM, 20GB storage | Real-time monitoring & notifications |
 
 ## 🚀 Quick Start
 
@@ -86,6 +87,12 @@ The installer will guide you through:
 - 50GB-500GB storage for cache
 - Gigabit Ethernet recommended
 
+**Monitoring Node:**
+- 2GB+ RAM (4GB for 50+ nodes)
+- 20GB+ storage
+- 1 Ethernet port
+- Docker support
+
 ## 📖 Documentation
 
 - [Installation Guide](docs/installation.md)
@@ -93,6 +100,7 @@ The installer will guide you through:
 - [OSPF Configuration](docs/ospf.md)
 - [DNS Architecture](docs/dns.md)
 - [LANcache Integration](docs/lancache.md)
+- [Monitoring & Alerts](docs/monitoring.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [API Reference](docs/api.md)
 
@@ -172,6 +180,13 @@ mesh-anycast-status
 # Backup & Restore
 mesh-backup
 mesh-restore <backup-file>
+
+# Network Monitoring
+mesh-monitor status          # Network overview
+mesh-monitor nodes           # List all nodes
+mesh-monitor alerts          # Show active alerts
+mesh-monitor topology        # OSPF topology map
+mesh-monitor test-notification <type>  # Test notifications
 
 # System Updates
 mesh-update

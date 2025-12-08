@@ -1,0 +1,179 @@
+name: Build Monitoring Containers
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'docker/monitoring/**'
+      - 'scripts/monitoring/**'
+      - '.github/workflows/build-monitoring.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docker/monitoring/**'
+      - 'scripts/monitoring/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/mesh-network
+
+jobs:
+  build-dashboard:
+    name: Build Dashboard Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-monitor-dashboard
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Prepare build context
+        run: |
+          mkdir -p docker/monitoring/build
+          cp -r scripts/monitoring/* docker/monitoring/build/
+          cp docker/monitoring/requirements.txt docker/monitoring/build/
+
+      - name: Build and push Dashboard image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/monitoring/build
+          file: docker/monitoring/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+  build-collector:
+    name: Build Collector Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-monitor-collector
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Prepare build context
+        run: |
+          mkdir -p docker/monitoring/build
+          cp -r scripts/monitoring/* docker/monitoring/build/
+          cp docker/monitoring/requirements.txt docker/monitoring/build/
+
+      - name: Build and push Collector image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/monitoring/build
+          file: docker/monitoring/Dockerfile.collector
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-dashboard, build-collector]
+    if: always()
+
+    steps:
+      - name: Check build results
+        run: |
+          echo "Dashboard build: ${{ needs.build-dashboard.result }}"
+          echo "Collector build: ${{ needs.build-collector.result }}"
+
+          if [[ "${{ needs.build-dashboard.result }}" != "success" ]] || \
+             [[ "${{ needs.build-collector.result }}" != "success" ]]; then
+            echo "One or more builds failed!"
+            exit 1
+          fi
+
+          echo "All builds successful!"
+
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # Monitoring Container Build Summary
+
+          ## Build Status
+          - Dashboard: ${{ needs.build-dashboard.result }}
+          - Collector: ${{ needs.build-collector.result }}
+
+          ## Images
+          - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-monitor-dashboard:latest\`
+          - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-monitor-collector:latest\`
+
+          ## Pull Images
+          \`\`\`bash
+          docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-monitor-dashboard:latest
+          docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-monitor-collector:latest
+          \`\`\`
+          EOF

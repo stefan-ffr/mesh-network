@@ -1,0 +1,22 @@
+[Unit]
+Description=Mesh Network Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=mesh-monitor
+Group=mesh-monitor
+WorkingDirectory=/opt/mesh-monitor
+ExecStart=/opt/mesh-monitor/venv/bin/python3 /opt/mesh-monitor/dashboard.py
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mesh-monitor
+
+[Install]
+WantedBy=multi-user.target

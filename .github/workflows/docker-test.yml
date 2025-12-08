@@ -1,0 +1,166 @@
+name: Test Docker Containers
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'docker/**'
+      - 'scripts/monitoring/**'
+      - '.github/workflows/docker-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-monitoring-stack:
+    name: Test Monitoring Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create test environment file
+        run: |
+          cat > docker/monitoring/.env << EOF
+          DB_PASSWORD=test_password_123
+          SECRET_KEY=test_secret_key_for_testing_only
+          DASHBOARD_PORT=8080
+          EOF
+
+      - name: Prepare build context
+        run: |
+          mkdir -p docker/monitoring/build
+          cp -r scripts/monitoring/* docker/monitoring/build/
+          cp docker/monitoring/requirements.txt docker/monitoring/build/
+          # Create dummy templates and static directories for testing
+          mkdir -p docker/monitoring/build/templates
+          mkdir -p docker/monitoring/build/static
+
+      - name: Build containers
+        run: |
+          cd docker/monitoring/build
+          docker build -f ../Dockerfile -t mesh-monitor-dashboard:test .
+          docker build -f ../Dockerfile.collector -t mesh-monitor-collector:test .
+
+      - name: Start monitoring stack
+        run: |
+          # Use test configuration
+          docker-compose -f docker/monitoring-docker-compose.yml up -d postgres
+          sleep 10
+
+      - name: Verify PostgreSQL
+        run: |
+          docker-compose -f docker/monitoring-docker-compose.yml exec -T postgres \
+            pg_isready -U mesh_monitor
+
+      - name: Check container health
+        run: |
+          # Wait for health checks
+          timeout 60 bash -c 'until docker inspect --format="{{.State.Health.Status}}" mesh-monitor-db | grep -q healthy; do sleep 2; done'
+
+      - name: View logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker/monitoring-docker-compose.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose -f docker/monitoring-docker-compose.yml down -v
+
+  test-dns-stack:
+    name: Test DNS Stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create DNS configuration files
+        run: |
+          mkdir -p configs/coredns
+          mkdir -p configs/unbound
+
+          # Create minimal Corefile
+          cat > configs/coredns/Corefile << EOF
+          . {
+              forward . 8.8.8.8 8.8.4.4
+              log
+              errors
+          }
+          EOF
+
+          # Create minimal unbound.conf
+          cat > configs/unbound/unbound.conf << EOF
+          server:
+              interface: 0.0.0.0@5353
+              access-control: 0.0.0.0/0 allow
+              verbosity: 1
+          EOF
+
+      - name: Test CoreDNS configuration
+        run: |
+          docker run --rm -v $(pwd)/configs/coredns:/etc/coredns:ro \
+            coredns/coredns:latest -conf /etc/coredns/Corefile -plugins 2>&1 | head -20
+
+      - name: Create etcd environment
+        run: |
+          cat > docker/.env.dns << EOF
+          ETCD_NAME=test-node
+          ETCD_IP=127.0.0.1
+          ETCD_CLUSTER=test-node=http://127.0.0.1:2380
+          ETCD_CLUSTER_STATE=new
+          EOF
+
+      - name: View logs on failure
+        if: failure()
+        run: |
+          docker-compose -f docker/dns-docker-compose.yml logs || true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'docker/'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  lint-dockerfiles:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/monitoring/Dockerfile
+          failure-threshold: warning
+
+      - name: Run hadolint on collector
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/monitoring/Dockerfile.collector
+          failure-threshold: warning

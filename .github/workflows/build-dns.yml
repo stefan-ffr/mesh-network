@@ -1,0 +1,192 @@
+name: Build DNS Containers
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'configs/coredns/**'
+      - 'configs/unbound/**'
+      - '.github/workflows/build-dns.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'configs/coredns/**'
+      - 'configs/unbound/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/mesh-network
+
+jobs:
+  build-coredns:
+    name: Build CoreDNS Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-coredns
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create Dockerfile for CoreDNS
+        run: |
+          cat > Dockerfile.coredns << 'EOF'
+          FROM coredns/coredns:latest
+
+          LABEL maintainer="mesh-network"
+          LABEL description="CoreDNS with etcd backend for Mesh Network"
+
+          # Copy custom Corefile
+          COPY configs/coredns/Corefile /etc/coredns/Corefile
+
+          EXPOSE 53 53/udp
+
+          ENTRYPOINT ["/coredns"]
+          CMD ["-conf", "/etc/coredns/Corefile"]
+          EOF
+
+      - name: Build and push CoreDNS image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.coredns
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-unbound:
+    name: Build Unbound Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-unbound
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Create Dockerfile for Unbound
+        run: |
+          cat > Dockerfile.unbound << 'EOF'
+          FROM mvance/unbound:latest
+
+          LABEL maintainer="mesh-network"
+          LABEL description="Unbound DNS cache for Mesh Network"
+
+          # Copy custom configuration
+          COPY configs/unbound/unbound.conf /opt/unbound/etc/unbound/unbound.conf
+
+          EXPOSE 5353 5353/udp
+
+          HEALTHCHECK --interval=30s --timeout=3s CMD drill @127.0.0.1 -p 5353 cloudflare.com || exit 1
+          EOF
+
+      - name: Build and push Unbound image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.unbound
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  dns-build-summary:
+    name: DNS Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-coredns, build-unbound]
+    if: always()
+
+    steps:
+      - name: Check build results
+        run: |
+          echo "CoreDNS build: ${{ needs.build-coredns.result }}"
+          echo "Unbound build: ${{ needs.build-unbound.result }}"
+
+          if [[ "${{ needs.build-coredns.result }}" != "success" ]] || \
+             [[ "${{ needs.build-unbound.result }}" != "success" ]]; then
+            echo "One or more builds failed!"
+            exit 1
+          fi
+
+          echo "All DNS builds successful!"
+
+      - name: Create summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          # DNS Container Build Summary
+
+          ## Build Status
+          - CoreDNS: ${{ needs.build-coredns.result }}
+          - Unbound: ${{ needs.build-unbound.result }}
+
+          ## Images
+          - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-coredns:latest\`
+          - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-unbound:latest\`
+
+          ## Usage
+          \`\`\`bash
+          # Pull images
+          docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-coredns:latest
+          docker pull ${{ env.REGISTRY }}/${{ github.repository_owner }}/mesh-network-unbound:latest
+
+          # Start DNS services
+          docker-compose -f docker/dns-docker-compose.yml up -d
+          \`\`\`
+          EOF
