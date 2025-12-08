@@ -1,9 +1,7 @@
 name: Build Raspberry Pi Images
 
-# NOTE: This workflow currently fails in GitHub Actions due to loop device limitations.
-# The build script requires losetup -P which is not fully supported in GitHub Actions runners.
-# Raspberry Pi images should be built locally using: sudo ./images/build-pi-image.sh <node_type>
-# TODO: Migrate to libguestfs (guestfish/virt-customize) for GitHub Actions compatibility
+# NOTE: The build script now uses kpartx instead of losetup -P for better GitHub Actions compatibility.
+# If builds still fail, images can be built locally using: sudo ./images/build-pi-image.sh <node_type>
 
 on:
   workflow_dispatch:

@@ -112,12 +112,19 @@ mount_image() {
 
     log "Mounting image..."
 
-    # Setup loop device
-    local loop_device=$(losetup -f --show -P "${image}")
+    # Setup loop device without partition scanning
+    local loop_device=$(losetup -f --show "${image}")
 
-    # Wait for partitions
+    # Use kpartx to create device mappings (works better in GitHub Actions)
+    kpartx -av "${loop_device}"
+
+    # Wait for device mappings
     sleep 2
-    partprobe "${loop_device}"
+
+    # Get mapper device name (e.g., loop0 -> /dev/mapper/loop0p1)
+    local mapper_base=$(basename "${loop_device}")
+    local boot_dev="/dev/mapper/${mapper_base}p1"
+    local root_dev="/dev/mapper/${mapper_base}p2"
 
     # Create mount points
     local boot_mount="${BUILD_DIR}/mnt/boot"
@@ -126,12 +133,12 @@ mount_image() {
     mkdir -p "${boot_mount}" "${root_mount}"
 
     # Resize root filesystem BEFORE mounting
-    e2fsck -f -y "${loop_device}p2" || true
-    resize2fs "${loop_device}p2"
+    e2fsck -f -y "${root_dev}" || true
+    resize2fs "${root_dev}"
 
     # Mount partitions
-    mount "${loop_device}p1" "${boot_mount}"
-    mount "${loop_device}p2" "${root_mount}"
+    mount "${boot_dev}" "${boot_mount}"
+    mount "${root_dev}" "${root_mount}"
 
     echo "${loop_device}:${boot_mount}:${root_mount}"
 }
@@ -145,6 +152,9 @@ unmount_image() {
     # Unmount filesystems
     umount "${root_mount}" || true
     umount "${boot_mount}" || true
+
+    # Remove kpartx device mappings
+    kpartx -dv "${loop_device}" || true
 
     # Detach loop device
     losetup -d "${loop_device}" || true
