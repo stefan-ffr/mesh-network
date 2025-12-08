@@ -188,7 +188,7 @@ build {
 
   # Copy mesh network files
   provisioner "file" {
-    source      = "../scripts/"
+    source      = "../../scripts/"
     destination = "/tmp/mesh-scripts/"
   }
 
@@ -201,7 +201,7 @@ build {
   }
 
   provisioner "file" {
-    source      = "../configs/"
+    source      = "../../configs/"
     destination = "/tmp/mesh-configs/"
   }
 
@@ -213,7 +213,7 @@ build {
   }
 
   provisioner "file" {
-    source      = "../systemd/"
+    source      = "../../systemd/"
     destination = "/tmp/mesh-systemd/"
   }
 
