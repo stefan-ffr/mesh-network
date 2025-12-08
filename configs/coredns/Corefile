@@ -1,0 +1,19 @@
+. {
+    # Forward to etcd for mesh.local domain
+    etcd mesh.local {
+        path /coredns
+        endpoint http://127.0.0.1:2379
+    }
+
+    # Forward everything else to upstream DNS (Unbound)
+    forward . 127.0.0.1:5353
+
+    # Enable caching
+    cache 30
+
+    # Enable logging
+    log
+
+    # Report errors
+    errors
+}
