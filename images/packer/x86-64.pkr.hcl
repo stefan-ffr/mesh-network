@@ -162,8 +162,6 @@ source "virtualbox-iso" "mesh_network" {
 }
 
 build {
-  name = "mesh-network-${var.node_type}"
-
   sources = [
     "source.qemu.mesh_network",
     "source.vmware-iso.mesh_network",

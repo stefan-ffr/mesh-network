@@ -125,13 +125,13 @@ mount_image() {
 
     mkdir -p "${boot_mount}" "${root_mount}"
 
+    # Resize root filesystem BEFORE mounting
+    e2fsck -f -y "${loop_device}p2" || true
+    resize2fs "${loop_device}p2"
+
     # Mount partitions
     mount "${loop_device}p1" "${boot_mount}"
     mount "${loop_device}p2" "${root_mount}"
-
-    # Resize root filesystem
-    e2fsck -f -y "${loop_device}p2" || true
-    resize2fs "${loop_device}p2"
 
     echo "${loop_device}:${boot_mount}:${root_mount}"
 }
