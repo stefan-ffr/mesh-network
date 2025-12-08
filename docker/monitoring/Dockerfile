@@ -23,7 +23,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY mesh_monitor.py .
+COPY mesh-monitor.py .
 COPY notifications.py .
 COPY dashboard.py .
 COPY collector.py .
