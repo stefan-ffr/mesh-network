@@ -1,11 +1,23 @@
 name: Build Raspberry Pi Images
 
-# NOTE: The build script now uses kpartx instead of losetup -P for better GitHub Actions compatibility.
-# If builds still fail, images can be built locally using: sudo ./images/build-pi-image.sh <node_type>
+# NOTE: This workflow is DISABLED because GitHub Actions runners do not support loop devices.
+# The build script requires losetup which fails with "No such file or directory" in Actions.
+#
+# To build Raspberry Pi images, run locally:
+#   sudo ./images/build-pi-image.sh monitoring
+#   sudo ./images/build-pi-image.sh all
+#
+# Future: Consider using qemu-img/guestfish for a pure userspace solution.
 
 on:
   workflow_dispatch:
+    # DISABLED - Uncomment to enable (will fail without loop device support)
+    #inputs:
     inputs:
+      _disabled:
+        description: 'This workflow is disabled - build locally'
+        required: false
+        default: 'disabled'
       node_type:
         description: 'Node type to build (or "all")'
         required: true
@@ -33,7 +45,7 @@ jobs:
   build-matrix:
     name: Build Image - ${{ matrix.node_type }}
     runs-on: ubuntu-latest
-    if: github.event.inputs.node_type != 'all'
+    if: false  # DISABLED - GitHub Actions does not support loop devices
 
     strategy:
       fail-fast: false
@@ -95,7 +107,7 @@ jobs:
   build-all:
     name: Build All Images
     runs-on: ubuntu-latest
-    if: github.event.inputs.node_type == 'all' || github.event_name == 'release'
+    if: false  # DISABLED - GitHub Actions does not support loop devices
 
     strategy:
       fail-fast: false

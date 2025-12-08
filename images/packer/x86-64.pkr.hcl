@@ -35,12 +35,12 @@ variable "disk_size" {
 
 variable "iso_url" {
   type    = string
-  default = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-12.5.0-amd64-netinst.iso"
+  default = "https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.2.0-amd64-netinst.iso"
 }
 
 variable "iso_checksum" {
   type    = string
-  default = "sha256:013f5b44670d81280b5b1bc02455842b250df2f0c6763398feb69af1a805a14f"
+  default = "sha256:677c4d57aa034dc192b5191870141057574c1b05df2b9569c0ee08aa4e32125d"
 }
 
 # QEMU/KVM build
