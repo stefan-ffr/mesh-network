@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     dnsutils \
     curl \
+    gcc \
+    make \
+    libffi-dev \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user
