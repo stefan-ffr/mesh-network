@@ -7,7 +7,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "=== Installing common mesh network packages ==="
 
 # Networking tools
-apt-get install -y \
+sudo apt-get install -y \
     network-manager \
     iptables \
     iproute2 \
@@ -18,22 +18,23 @@ apt-get install -y \
     vlan
 
 # Routing (FRR)
-apt-get install -y \
+sudo apt-get install -y \
     frr \
     frr-pythontools
 
 # Distributed storage (etcd)
-apt-get install -y \
+sudo apt-get install -y \
     etcd-server \
     etcd-client
 
 # DNS
-apt-get install -y \
-    coredns \
-    unbound
+sudo apt-get install -y \
+    coredns || true
+sudo apt-get install -y \
+    unbound || true
 
 # System utilities
-apt-get install -y \
+sudo apt-get install -y \
     vim \
     nano \
     htop \
@@ -45,34 +46,36 @@ apt-get install -y \
     lsb-release
 
 # Enable and configure FRR
-echo "frr=yes" > /etc/frr/daemons
-echo "zebra=yes" >> /etc/frr/daemons
-echo "ospfd=yes" >> /etc/frr/daemons
-echo "bgpd=no" >> /etc/frr/daemons
-echo "ospf6d=no" >> /etc/frr/daemons
-echo "ripd=no" >> /etc/frr/daemons
-echo "ripngd=no" >> /etc/frr/daemons
-echo "isisd=no" >> /etc/frr/daemons
-echo "pimd=no" >> /etc/frr/daemons
-echo "ldpd=no" >> /etc/frr/daemons
-echo "nhrpd=no" >> /etc/frr/daemons
-echo "eigrpd=no" >> /etc/frr/daemons
-echo "babeld=no" >> /etc/frr/daemons
-echo "sharpd=no" >> /etc/frr/daemons
-echo "pbrd=no" >> /etc/frr/daemons
-echo "bfdd=no" >> /etc/frr/daemons
-echo "fabricd=no" >> /etc/frr/daemons
-echo "vrrpd=no" >> /etc/frr/daemons
+sudo tee /etc/frr/daemons > /dev/null << 'EOF'
+frr=yes
+zebra=yes
+ospfd=yes
+bgpd=no
+ospf6d=no
+ripd=no
+ripngd=no
+isisd=no
+pimd=no
+ldpd=no
+nhrpd=no
+eigrpd=no
+babeld=no
+sharpd=no
+pbrd=no
+bfdd=no
+fabricd=no
+vrrpd=no
+EOF
 
-systemctl enable frr
+sudo systemctl enable frr
 
 # Configure etcd
-systemctl enable etcd
+sudo systemctl enable etcd
 
 # Create mesh network directories
-mkdir -p /opt/mesh-network
-mkdir -p /etc/mesh-network
-mkdir -p /var/lib/mesh-network
-mkdir -p /var/log/mesh-network
+sudo mkdir -p /opt/mesh-network
+sudo mkdir -p /etc/mesh-network
+sudo mkdir -p /var/lib/mesh-network
+sudo mkdir -p /var/log/mesh-network
 
 echo "=== Common packages installed successfully ==="

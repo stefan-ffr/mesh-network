@@ -1,10 +1,10 @@
 #!/bin/bash
-# Install packages for mesh router node
+# Install packages for WiFi gateway node (WiFi mesh + WAN)
 set -e
 
 export DEBIAN_FRONTEND=noninteractive
 
-echo "=== Installing mesh router packages ==="
+echo "=== Installing WiFi gateway packages ==="
 
 # WiFi tools
 sudo apt-get install -y \
@@ -14,15 +14,17 @@ sudo apt-get install -y \
     iw \
     crda || sudo apt-get install -y wpasupplicant hostapd wireless-tools iw
 
-# DHCP server
+# Gateway/firewall tools
 sudo apt-get install -y \
-    isc-dhcp-server
+    iptables-persistent \
+    fail2ban \
+    dnsmasq
 
 # Enable hostapd for WiFi AP
 sudo systemctl unmask hostapd || true
 sudo systemctl enable hostapd || true
 
-# Enable DHCP server
-sudo systemctl enable isc-dhcp-server || true
+# Enable fail2ban
+sudo systemctl enable fail2ban || true
 
-echo "=== Mesh router packages installed successfully ==="
+echo "=== WiFi gateway packages installed successfully ==="
