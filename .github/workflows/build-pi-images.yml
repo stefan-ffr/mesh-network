@@ -174,7 +174,7 @@ jobs:
           hostname: mesh-${{ matrix.node_type }}
           keyboard-keymap: us
           keyboard-layout: English (US)
-          timezone: UTC
+          timezone: Etc/UTC
           username: pi
           password: raspberry
           wpa-essid: ''
