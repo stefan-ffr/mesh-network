@@ -38,16 +38,17 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 
 ## 🚀 Quick Start
 
-### Raspberry Pi Images (Easiest!)
+### Pre-Built Images (Easiest!)
 
-Pre-built images for Raspberry Pi 4 and 5:
+Download ready-to-use images for Raspberry Pi or x86/64 systems:
+
+#### Raspberry Pi 4 & 5
 
 ```bash
 # Download image (choose your node type)
 wget https://github.com/YOUR-USERNAME/mesh-network/releases/latest/download/mesh-network-monitoring-1.0.0-arm64.img.xz
 
 # Verify checksum
-wget https://github.com/YOUR-USERNAME/mesh-network/releases/latest/download/mesh-network-monitoring-1.0.0-arm64.img.xz.sha256
 sha256sum -c mesh-network-monitoring-1.0.0-arm64.img.xz.sha256
 
 # Extract and flash to SD card
@@ -55,14 +56,31 @@ xz -d mesh-network-monitoring-1.0.0-arm64.img.xz
 sudo dd if=mesh-network-monitoring-1.0.0-arm64.img of=/dev/sdX bs=4M status=progress
 ```
 
-**Available images:**
+See [Raspberry Pi Images Guide](docs/raspberry-pi-images.md) for details.
+
+#### x86/64 (PCs, Servers, VMs)
+
+```bash
+# Download (choose format: qcow2, vmdk, vdi, vhd, img)
+wget https://github.com/YOUR-USERNAME/mesh-network/releases/latest/download/mesh-network-monitoring-1.0.0-x86_64.qcow2.xz
+
+# Verify and extract
+sha256sum -c mesh-network-monitoring-1.0.0-x86_64.qcow2.xz.sha256
+xz -d mesh-network-monitoring-1.0.0-x86_64.qcow2.xz
+
+# Use with QEMU/KVM, VMware, VirtualBox, Hyper-V, or Proxmox
+```
+
+**Formats:** QCOW2 (KVM/Proxmox) • VMDK (VMware) • VDI (VirtualBox) • VHD (Hyper-V) • RAW (bare metal)
+
+See [x86/64 Images Guide](docs/x86-images.md) for platform-specific instructions.
+
+**Available node types:**
 - `mesh-router` - WiFi mesh router
 - `monitoring` - Monitoring node
 - `update-cache` - Update cache server
 - `gateway-wifi` / `gateway-wired` - Internet gateways
 - `lan-router` - Wired router
-
-See [Raspberry Pi Images Guide](docs/raspberry-pi-images.md) for detailed instructions.
 
 ### One-Line Installation (Any Linux)
 ```bash
@@ -123,6 +141,7 @@ The installer will guide you through:
 
 - [Installation Guide](docs/installation.md)
 - [Raspberry Pi Images](docs/raspberry-pi-images.md) - Pre-built images for Pi 4 & 5
+- [x86/64 Images](docs/x86-images.md) - Images for PCs, servers, and VMs
 - [Node Types Explained](docs/node-types.md)
 - [OSPF Configuration](docs/ospf.md)
 - [DNS Architecture](docs/dns.md)
