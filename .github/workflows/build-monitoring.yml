@@ -64,6 +64,8 @@ jobs:
           mkdir -p docker/monitoring/build
           cp -r scripts/monitoring/* docker/monitoring/build/
           cp docker/monitoring/requirements.txt docker/monitoring/build/
+          cp -r docker/monitoring/templates docker/monitoring/build/
+          cp -r docker/monitoring/static docker/monitoring/build/
 
       - name: Build and push Dashboard image
         uses: docker/build-push-action@v5
@@ -121,6 +123,8 @@ jobs:
           mkdir -p docker/monitoring/build
           cp -r scripts/monitoring/* docker/monitoring/build/
           cp docker/monitoring/requirements.txt docker/monitoring/build/
+          cp -r docker/monitoring/templates docker/monitoring/build/
+          cp -r docker/monitoring/static docker/monitoring/build/
 
       - name: Build and push Collector image
         uses: docker/build-push-action@v5
