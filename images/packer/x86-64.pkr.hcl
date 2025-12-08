@@ -43,6 +43,12 @@ variable "iso_checksum" {
   default = "sha256:677c4d57aa034dc192b5191870141057574c1b05df2b9569c0ee08aa4e32125d"
 }
 
+variable "qemu_accelerator" {
+  type        = string
+  description = "QEMU accelerator: kvm, hvf (macOS), tcg (software), or none"
+  default     = "kvm"
+}
+
 # QEMU/KVM build
 source "qemu" "mesh_network" {
   iso_url           = var.iso_url
@@ -51,7 +57,7 @@ source "qemu" "mesh_network" {
   vm_name           = "mesh-network-${var.node_type}-${var.mesh_version}"
   disk_size         = var.disk_size
   format            = "qcow2"
-  accelerator       = "kvm"
+  accelerator       = var.qemu_accelerator
   headless          = true
 
   # System specs

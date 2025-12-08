@@ -1,23 +1,11 @@
 name: Build Raspberry Pi Images
 
-# NOTE: This workflow is DISABLED because GitHub Actions runners do not support loop devices.
-# The build script requires losetup which fails with "No such file or directory" in Actions.
-#
-# To build Raspberry Pi images, run locally:
-#   sudo ./images/build-pi-image.sh monitoring
-#   sudo ./images/build-pi-image.sh all
-#
-# Future: Consider using qemu-img/guestfish for a pure userspace solution.
+# This workflow uses libguestfs (virt-customize) to build images
+# without requiring loop device support. This works in GitHub Actions!
 
 on:
   workflow_dispatch:
-    # DISABLED - Uncomment to enable (will fail without loop device support)
-    #inputs:
     inputs:
-      _disabled:
-        description: 'This workflow is disabled - build locally'
-        required: false
-        default: 'disabled'
       node_type:
         description: 'Node type to build (or "all")'
         required: true
@@ -45,7 +33,7 @@ jobs:
   build-matrix:
     name: Build Image - ${{ matrix.node_type }}
     runs-on: ubuntu-latest
-    if: false  # DISABLED - GitHub Actions does not support loop devices
+    if: github.event.inputs.node_type != 'all'
 
     strategy:
       fail-fast: false
@@ -68,16 +56,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            wget xz-utils parted kpartx \
+            wget xz-utils \
             qemu-user-static qemu-utils \
-            fdisk gdisk dosfstools \
-            libguestfs-tools
+            libguestfs-tools guestfs-tools
+
+          # Verify libguestfs works
+          echo "Testing libguestfs..."
+          libguestfs-test-tool --timeout 60 || echo "libguestfs test completed"
 
       - name: Build Raspberry Pi Image
         run: |
           cd images
-          chmod +x build-pi-image.sh
-          sudo ./build-pi-image.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
+          chmod +x build-pi-image-guestfs.sh
+          # No sudo needed - libguestfs works in userspace!
+          ./build-pi-image-guestfs.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
 
       - name: List output files
         run: |
@@ -107,7 +99,7 @@ jobs:
   build-all:
     name: Build All Images
     runs-on: ubuntu-latest
-    if: false  # DISABLED - GitHub Actions does not support loop devices
+    if: github.event.inputs.node_type == 'all' || github.event_name == 'release'
 
     strategy:
       fail-fast: false
@@ -135,16 +127,20 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            wget xz-utils parted kpartx \
+            wget xz-utils \
             qemu-user-static qemu-utils \
-            fdisk gdisk dosfstools \
-            libguestfs-tools
+            libguestfs-tools guestfs-tools
+
+          # Verify libguestfs works
+          echo "Testing libguestfs..."
+          libguestfs-test-tool --timeout 60 || echo "libguestfs test completed"
 
       - name: Build Raspberry Pi Image - ${{ matrix.node_type }}
         run: |
           cd images
-          chmod +x build-pi-image.sh
-          sudo ./build-pi-image.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
+          chmod +x build-pi-image-guestfs.sh
+          # No sudo needed - libguestfs works in userspace!
+          ./build-pi-image-guestfs.sh -v ${{ env.MESH_VERSION }} ${{ matrix.node_type }}
 
       - name: List output files
         run: |

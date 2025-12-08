@@ -59,6 +59,19 @@ jobs:
           docker system prune -af
           sudo df -h
 
+      - name: Enable KVM
+        run: |
+          # Enable KVM group permissions for GitHub Actions runner
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+          # Add runner user to kvm group
+          sudo usermod -aG kvm $USER
+
+          # Verify KVM is available
+          ls -la /dev/kvm || echo "Warning: /dev/kvm not found"
+
       - name: Install dependencies
         run: |
           # Install QEMU and KVM
@@ -72,9 +85,17 @@ jobs:
             virtinst \
             libguestfs-tools
 
-          # Enable KVM
+          # Enable KVM modules
           sudo modprobe kvm
           sudo modprobe kvm_intel || sudo modprobe kvm_amd || true
+
+          # Final KVM check
+          if [ -e /dev/kvm ]; then
+            echo "KVM is available"
+            ls -la /dev/kvm
+          else
+            echo "Warning: KVM is NOT available - build may be slow"
+          fi
 
       - name: Install Packer
         uses: hashicorp/setup-packer@main
@@ -86,12 +107,24 @@ jobs:
           cd images/packer
           packer init x86-64.pkr.hcl
 
+      - name: Detect QEMU accelerator
+        id: qemu-accel
+        run: |
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "KVM is available and accessible"
+            echo "accelerator=kvm" >> $GITHUB_OUTPUT
+          else
+            echo "KVM not available, falling back to TCG (software emulation)"
+            echo "accelerator=tcg" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build with Packer
         run: |
           cd images/packer
           packer build \
             -var="node_type=${{ matrix.node_type }}" \
             -var="mesh_version=${{ env.MESH_VERSION }}" \
+            -var="qemu_accelerator=${{ steps.qemu-accel.outputs.accelerator }}" \
             -only=qemu.mesh_network \
             x86-64.pkr.hcl
 
