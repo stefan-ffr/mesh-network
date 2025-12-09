@@ -10,7 +10,10 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 
 ### 🔄 Core Infrastructure
 - **OSPF-based Mesh Routing** - Automatic route discovery and failover (< 10s)
-- **802.11s WiFi Mesh** - Wireless backbone using kernel mesh point
+- **BATMAN-adv WiFi Mesh** - Layer 2 mesh networking with automatic path selection
+- **802.11s WiFi Support** - Wireless backbone using kernel mesh point
+- **IPv4 + IPv6 Dual Stack** - Full OSPFv2 and OSPFv3 support with NAT66
+- **WiFi-to-Wired Bridge** - Seamless bridging between BATMAN-adv and OSPF segments
 - **Link-Local Auto-Configuration** - Zero-configuration networking (169.254.0.0/16)
 - **Distributed DNS** - etcd + CoreDNS with automatic replication across nodes
 - **Unbound DNS Cache** - Aggressive caching with cluster-wide synchronization
@@ -33,10 +36,31 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 | **LAN Router** | Wired to mesh + LAN clients | 2+ Ethernet ports | Extend network via ethernet |
 | **Gateway (WiFi)** | WiFi mesh + WAN | 1 WiFi + 1 WAN port | Internet access with WiFi mesh |
 | **Gateway (Wired)** | Wired to mesh + WAN | 2+ Ethernet ports | Internet access via wired connection |
+| **Gateway (Hybrid)** ⭐ | WiFi + Wired bridge + WAN | 1 WiFi + 2+ Ethernet | Bridges BATMAN-adv ↔ OSPF segments |
 | **Update Cache** | LANcache + apt-cacher-ng + Squid | 50-500GB storage | Bandwidth savings (85-95%) |
 | **Monitoring Node** | Network monitoring + alerts | 2GB RAM, 20GB storage | Real-time monitoring & notifications |
 
 ## 🚀 Quick Start
+
+### Interactive Setup (Recommended! ⭐)
+
+New! Automatic interface detection, WiFi-to-Wired bridging, and IPv6 support:
+
+```bash
+wget https://raw.githubusercontent.com/YOUR-USERNAME/mesh-network/main/scripts/setup/interactive-setup.sh
+chmod +x interactive-setup.sh
+sudo ./interactive-setup.sh
+```
+
+**Features:**
+- ✅ Auto-detects all network interfaces (WiFi + Ethernet)
+- ✅ Shows link status, speed, and MAC addresses
+- ✅ Interactive node type selection
+- ✅ WiFi-to-Wired mesh bridging (BATMAN-adv ↔ OSPF)
+- ✅ Full IPv6 support (OSPFv3 + NAT66)
+- ✅ One-step configuration
+
+See [Interactive Setup Guide](docs/interactive-setup.md) for details.
 
 ### Pre-Built Images (Easiest!)
 
@@ -139,14 +163,20 @@ The installer will guide you through:
 
 ## 📖 Documentation
 
+### Setup & Installation
+- [**Interactive Setup Guide** ⭐](docs/interactive-setup.md) - Auto-detection, IPv6, bridging
 - [Installation Guide](docs/installation.md)
 - [Raspberry Pi Images](docs/raspberry-pi-images.md) - Pre-built images for Pi 4 & 5
 - [x86/64 Images](docs/x86-images.md) - Images for PCs, servers, and VMs
+
+### Configuration
 - [Node Types Explained](docs/node-types.md)
 - [OSPF Configuration](docs/ospf.md)
 - [DNS Architecture](docs/dns.md)
 - [LANcache Integration](docs/lancache.md)
 - [Monitoring & Alerts](docs/monitoring.md)
+
+### Reference
 - [Troubleshooting](docs/troubleshooting.md)
 - [API Reference](docs/api.md)
 
@@ -347,8 +377,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
-### Version 2.1 (Q1 2025)
-- [ ] IPv6 support with OSPFv3
+### Version 2.1 (Q1 2025) ✅
+- [x] IPv6 support with OSPFv3
+- [x] IPv6 NAT66 for gateways
+- [x] WiFi-to-Wired mesh bridging (BATMAN-adv ↔ OSPF)
+- [x] Interactive setup with auto-detection
 - [ ] Grafana + Prometheus dashboards
 - [ ] SNMP monitoring integration
 - [ ] Telegram/Discord notifications

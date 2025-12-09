@@ -25,12 +25,19 @@ sudo ./build-pi-image.sh -v 1.1.0 mesh-router
 
 ## Available Node Types
 
-- `mesh-router` - WiFi mesh router + LAN clients
-- `lan-router` - Wired mesh router + LAN clients
-- `gateway-wifi` - WiFi mesh + WAN gateway
-- `gateway-wired` - Wired mesh + WAN gateway
+- `mesh-router` - WiFi mesh router (BATMAN-adv) + LAN clients
+- `lan-router` - Wired mesh router (OSPF) + LAN clients
+- `gateway-wifi` - WiFi mesh + WAN gateway + NAT/NAT66
+- `gateway-wired` - Wired mesh + WAN gateway + NAT/NAT66
+- `gateway-hybrid` ⭐ - WiFi + Wired bridge (BATMAN-adv ↔ OSPF) + WAN
 - `update-cache` - Update cache server (LANcache)
 - `monitoring` - Monitoring node (Docker-based)
+
+All node types include:
+- IPv4 + IPv6 dual-stack support
+- OSPFv2 and OSPFv3 routing
+- Automatic interface detection support
+- Interactive setup script included
 
 ## Requirements
 
