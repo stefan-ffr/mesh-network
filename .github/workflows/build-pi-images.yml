@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node_type: ${{ github.event.inputs.node_type == 'all' && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type || 'monitoring')) }}
+        node_type: ${{ (github.event.inputs.node_type == 'all' || github.event_name == 'release') && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type || 'monitoring')) }}
 
     steps:
       - name: Checkout repository
