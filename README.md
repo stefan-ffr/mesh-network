@@ -28,17 +28,16 @@ A complete, production-ready mesh network infrastructure with automatic node dis
 - **Automatic Backups** - Configuration backup and restore functionality
 - **Health Monitoring** - Automatic service health checks with OSPF route withdrawal
 
-### 🎯 Node Types
+### 🎯 Node Types (Simplified in v2.1!)
 
 | Type | Description | Hardware | Use Case |
 |------|-------------|----------|----------|
-| **Mesh Router** | WiFi mesh + LAN clients | 1 WiFi + 1 Ethernet | Main network coverage nodes |
-| **LAN Router** | Wired to mesh + LAN clients | 2+ Ethernet ports | Extend network via ethernet |
-| **Gateway (WiFi)** | WiFi mesh + WAN | 1 WiFi + 1 WAN port | Internet access with WiFi mesh |
-| **Gateway (Wired)** | Wired to mesh + WAN | 2+ Ethernet ports | Internet access via wired connection |
-| **Gateway (Hybrid)** ⭐ | WiFi + Wired bridge + WAN | 1 WiFi + 2+ Ethernet | Bridges BATMAN-adv ↔ OSPF segments |
+| **Mesh Router** | WiFi and/or Wired mesh + LAN<br>Auto-bridges if both present | 1+ WiFi or 2+ Ethernet | All mesh extension scenarios |
+| **Gateway** | Internet gateway<br>WiFi/Wired/Hybrid auto-detected | 1+ WiFi or 2+ Ethernet + WAN | Provides NAT/NAT66 for mesh |
 | **Update Cache** | LANcache + apt-cacher-ng + Squid | 50-500GB storage | Bandwidth savings (85-95%) |
-| **Monitoring Node** | Network monitoring + alerts | 2GB RAM, 20GB storage | Real-time monitoring & notifications |
+| **Monitoring** | Real-time monitoring + alerts | 2GB RAM, 20GB storage | Network visualization & notifications |
+
+**Note:** The setup script automatically detects your hardware and configures the appropriate mode (WiFi-only, Wired-only, or Hybrid with bridging).
 
 ## 🚀 Quick Start
 

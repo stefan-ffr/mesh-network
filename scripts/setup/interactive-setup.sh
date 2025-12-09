@@ -120,25 +120,26 @@ select_node_type() {
     echo ""
     echo -e "${CYAN}═══ Node Type Selection ═══${NC}"
     echo ""
-    echo "1) Mesh Router       - WiFi mesh + LAN distribution"
-    echo "2) LAN Router        - Wired mesh + LAN distribution"
-    echo "3) Gateway (WiFi)    - WiFi mesh + Internet gateway"
-    echo "4) Gateway (Wired)   - Wired mesh + Internet gateway"
-    echo "5) Gateway (Hybrid)  - WiFi + Wired mesh bridge + Internet"
-    echo "6) Update Cache      - LANcache node"
-    echo "7) Monitoring Node   - Network monitoring and visualization"
+    echo "1) Mesh Router       - WiFi and/or Wired mesh + LAN distribution"
+    echo "                       Auto-bridges WiFi ↔ Wired if both present"
+    echo ""
+    echo "2) Gateway           - Internet gateway (WiFi/Wired/Hybrid auto-detected)"
+    echo "                       Provides NAT/NAT66 for mesh network"
+    echo ""
+    echo "3) Update Cache      - LANcache + apt-cacher-ng + Squid"
+    echo "                       Transparent caching for bandwidth savings"
+    echo ""
+    echo "4) Monitoring        - Network monitoring + real-time dashboard"
+    echo "                       OSPF topology, alerts, and notifications"
     echo ""
 
     while true; do
-        read -p "Select node type [1-7]: " choice
+        read -p "Select node type [1-4]: " choice
         case $choice in
             1) NODE_TYPE="mesh-router"; break ;;
-            2) NODE_TYPE="lan-router"; break ;;
-            3) NODE_TYPE="gateway-wifi"; break ;;
-            4) NODE_TYPE="gateway-wired"; break ;;
-            5) NODE_TYPE="gateway-hybrid"; BRIDGE_WIFI_WIRED=true; break ;;
-            6) NODE_TYPE="update-cache"; break ;;
-            7) NODE_TYPE="monitoring"; break ;;
+            2) NODE_TYPE="gateway"; break ;;
+            3) NODE_TYPE="update-cache"; break ;;
+            4) NODE_TYPE="monitoring"; break ;;
             *) error "Invalid choice" ;;
         esac
     done
@@ -153,66 +154,107 @@ assign_interfaces() {
     echo ""
 
     case $NODE_TYPE in
-        mesh-router|gateway-wifi|gateway-hybrid)
-            # Need WiFi for mesh
-            if [ ${#WIRELESS_IFACES[@]} -eq 0 ]; then
-                error "No wireless interfaces found! This node type requires WiFi."
-                exit 1
+        mesh-router)
+            # Mesh router: Auto-detect and use WiFi and/or Wired for mesh
+            # If both present, enable bridging automatically
+
+            if [ ${#WIRELESS_IFACES[@]} -gt 0 ]; then
+                echo "WiFi interfaces available for mesh:"
+                for i in "${!WIRELESS_IFACES[@]}"; do
+                    echo "  $((i+1))) ${WIRELESS_IFACES[$i]}"
+                done
+
+                if [ ${#WIRELESS_IFACES[@]} -eq 1 ]; then
+                    MESH_INTERFACES+=("${WIRELESS_IFACES[0]}")
+                    info "Auto-selected WiFi: ${WIRELESS_IFACES[0]} for mesh"
+                else
+                    read -p "Select WiFi interface for mesh [1-${#WIRELESS_IFACES[@]}]: " wifi_choice
+                    MESH_INTERFACES+=("${WIRELESS_IFACES[$((wifi_choice-1))]}")
+                fi
             fi
 
-            echo "Available WiFi interfaces:"
-            for i in "${!WIRELESS_IFACES[@]}"; do
-                echo "  $((i+1))) ${WIRELESS_IFACES[$i]}"
-            done
+            if [ ${#WIRED_IFACES[@]} -gt 1 ]; then
+                echo ""
+                read -p "Also use wired interface for mesh? [y/N]: " use_wired
+                if [[ $use_wired =~ ^[Yy]$ ]]; then
+                    echo "Available wired interfaces:"
+                    for i in "${!WIRED_IFACES[@]}"; do
+                        echo "  $((i+1))) ${WIRED_IFACES[$i]}"
+                    done
 
-            if [ ${#WIRELESS_IFACES[@]} -eq 1 ]; then
-                MESH_INTERFACES+=("${WIRELESS_IFACES[0]}")
-                log "Auto-selected: ${WIRELESS_IFACES[0]} for mesh"
-            else
-                read -p "Select WiFi interface for mesh [1-${#WIRELESS_IFACES[@]}]: " wifi_choice
-                MESH_INTERFACES+=("${WIRELESS_IFACES[$((wifi_choice-1))]}")
+                    read -p "Select wired mesh interface [1-${#WIRED_IFACES[@]}]: " wired_choice
+                    selected="${WIRED_IFACES[$((wired_choice-1))]}"
+                    MESH_INTERFACES+=("$selected")
+                    WIRED_IFACES=("${WIRED_IFACES[@]/$selected}")
+
+                    # Enable bridging if both WiFi and wired mesh
+                    if [ ${#WIRELESS_IFACES[@]} -gt 0 ]; then
+                        BRIDGE_WIFI_WIRED=true
+                        info "WiFi-to-Wired bridging enabled automatically"
+                    fi
+                fi
+            fi
+            ;;
+
+        gateway)
+            # Gateway: Auto-detect WiFi/Wired/Hybrid based on available interfaces
+
+            if [ ${#WIRELESS_IFACES[@]} -gt 0 ]; then
+                echo "WiFi interface available:"
+                for i in "${!WIRELESS_IFACES[@]}"; do
+                    echo "  $((i+1))) ${WIRELESS_IFACES[$i]}"
+                done
+
+                if [ ${#WIRELESS_IFACES[@]} -eq 1 ]; then
+                    MESH_INTERFACES+=("${WIRELESS_IFACES[0]}")
+                    info "Auto-selected WiFi: ${WIRELESS_IFACES[0]} for mesh"
+                else
+                    read -p "Select WiFi interface for mesh [1-${#WIRELESS_IFACES[@]}]: " wifi_choice
+                    MESH_INTERFACES+=("${WIRELESS_IFACES[$((wifi_choice-1))]}")
+                fi
+            fi
+
+            if [ ${#WIRED_IFACES[@]} -gt 1 ]; then
+                echo ""
+                echo "Available wired interfaces:"
+                for i in "${!WIRED_IFACES[@]}"; do
+                    echo "  $((i+1))) ${WIRED_IFACES[$i]}"
+                done
+
+                # Determine if hybrid mode
+                if [ ${#WIRELESS_IFACES[@]} -gt 0 ] && [ ${#WIRED_IFACES[@]} -gt 1 ]; then
+                    read -p "Use wired interface for mesh too (hybrid mode)? [y/N]: " hybrid
+                    if [[ $hybrid =~ ^[Yy]$ ]]; then
+                        read -p "Select wired mesh interface [1-${#WIRED_IFACES[@]}]: " mesh_choice
+                        selected="${WIRED_IFACES[$((mesh_choice-1))]}"
+                        MESH_INTERFACES+=("$selected")
+                        WIRED_IFACES=("${WIRED_IFACES[@]/$selected}")
+                        BRIDGE_WIFI_WIRED=true
+                        info "Hybrid mode: WiFi + Wired mesh with bridging"
+                    fi
+                fi
+
+                # WAN interface
+                echo ""
+                if [ ${#WIRED_IFACES[@]} -gt 0 ]; then
+                    echo "Available interfaces for WAN:"
+                    for i in "${!WIRED_IFACES[@]}"; do
+                        echo "  $((i+1))) ${WIRED_IFACES[$i]}"
+                    done
+
+                    read -p "Select WAN interface [1-${#WIRED_IFACES[@]}]: " wan_choice
+                    selected="${WIRED_IFACES[$((wan_choice-1))]}"
+                    WAN_INTERFACES+=("$selected")
+                    WIRED_IFACES=("${WIRED_IFACES[@]/$selected}")
+                fi
+            elif [ ${#WIRED_IFACES[@]} -eq 1 ]; then
+                # Only one wired interface, must be WAN
+                WAN_INTERFACES+=("${WIRED_IFACES[0]}")
+                info "Auto-selected ${WIRED_IFACES[0]} for WAN"
+                WIRED_IFACES=()
             fi
             ;;
     esac
-
-    case $NODE_TYPE in
-        lan-router|gateway-wired|gateway-hybrid)
-            # Need wired for mesh uplink
-            if [ ${#WIRED_IFACES[@]} -eq 0 ]; then
-                error "No wired interfaces found!"
-                exit 1
-            fi
-
-            echo ""
-            echo "Available wired interfaces:"
-            for i in "${!WIRED_IFACES[@]}"; do
-                echo "  $((i+1))) ${WIRED_IFACES[$i]}"
-            done
-
-            read -p "Select wired mesh/uplink interface [1-${#WIRED_IFACES[@]}]: " uplink_choice
-            selected="${WIRED_IFACES[$((uplink_choice-1))]}"
-            MESH_INTERFACES+=("$selected")
-
-            # Remove from available wired interfaces
-            WIRED_IFACES=("${WIRED_IFACES[@]/$selected}")
-            ;;
-    esac
-
-    # WAN assignment for gateways
-    if [[ $NODE_TYPE == gateway-* ]]; then
-        echo ""
-        if [ ${#WIRED_IFACES[@]} -gt 0 ]; then
-            echo "Available interfaces for WAN:"
-            for i in "${!WIRED_IFACES[@]}"; do
-                echo "  $((i+1))) ${WIRED_IFACES[$i]}"
-            done
-
-            read -p "Select WAN interface [1-${#WIRED_IFACES[@]}]: " wan_choice
-            selected="${WIRED_IFACES[$((wan_choice-1))]}"
-            WAN_INTERFACES+=("$selected")
-            WIRED_IFACES=("${WIRED_IFACES[@]/$selected}")
-        fi
-    fi
 
     # Remaining interfaces for LAN
     if [ ${#WIRED_IFACES[@]} -gt 0 ]; then
@@ -224,9 +266,12 @@ assign_interfaces() {
     # Summary
     echo ""
     log "Interface assignment complete:"
-    echo "  Mesh:  ${MESH_INTERFACES[*]:-none}"
-    echo "  WAN:   ${WAN_INTERFACES[*]:-none}"
-    echo "  LAN:   ${LAN_INTERFACES[*]:-none}"
+    echo "  Mesh:        ${MESH_INTERFACES[*]:-none}"
+    echo "  WAN:         ${WAN_INTERFACES[*]:-none}"
+    echo "  LAN:         ${LAN_INTERFACES[*]:-none}"
+    if [ "$BRIDGE_WIFI_WIRED" = "true" ]; then
+        echo "  Bridge Mode: WiFi ↔ Wired (Hybrid)"
+    fi
 }
 
 # Configure WiFi-to-Wired bridge
@@ -464,7 +509,7 @@ EOFBAT
 
 # Configure NAT for gateways (IPv4 and IPv6)
 configure_nat() {
-    if [[ ! $NODE_TYPE == gateway-* ]]; then
+    if [[ $NODE_TYPE != "gateway" ]]; then
         return
     fi
 
@@ -661,8 +706,8 @@ features:
   batman_adv: $([ ${#WIRELESS_IFACES[@]} -gt 0 ] && echo "true" || echo "false")
   ospf: true
   ospfv3: $ENABLE_IPV6
-  nat: $([ "$NODE_TYPE" == gateway-* ] && echo "true" || echo "false")
-  nat66: $([ "$NODE_TYPE" == gateway-* ] && [ "$ENABLE_IPV6" = "true" ] && echo "true" || echo "false")
+  nat: $([ "$NODE_TYPE" = "gateway" ] && echo "true" || echo "false")
+  nat66: $([ "$NODE_TYPE" = "gateway" ] && [ "$ENABLE_IPV6" = "true" ] && echo "true" || echo "false")
 
 routing:
   ospf_router_id: "$ROUTER_ID"
@@ -748,7 +793,7 @@ main() {
     info "  bridge link                           # Show bridge members"
     info "  ip -6 addr show                       # Show IPv6 addresses"
     echo ""
-    if [[ "$NODE_TYPE" == gateway-* ]]; then
+    if [ "$NODE_TYPE" = "gateway" ]; then
         info "  # NAT status"
         info "  iptables -t nat -L -n -v             # IPv4 NAT"
         if [ "$ENABLE_IPV6" = "true" ]; then
