@@ -20,26 +20,16 @@ on:
         description: 'Image version'
         required: true
         default: '1.0.0'
-      build_method:
-        description: 'Build method'
-        required: true
-        default: 'packer'
-        type: choice
-        options:
-          - packer
-          - script
   release:
     types: [published]
 
 env:
   MESH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-  BUILD_METHOD: ${{ github.event.inputs.build_method || 'packer' }}
 
 jobs:
-  build-packer:
-    name: Build x86/64 - ${{ matrix.node_type }} (Packer)
+  build-images:
+    name: Build x86/64 - ${{ matrix.node_type }}
     runs-on: ubuntu-latest
-    if: github.event.inputs.build_method == 'packer' || github.event_name == 'release'
 
     strategy:
       fail-fast: false
@@ -164,9 +154,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-script:
-    name: Build x86/64 - ${{ matrix.node_type }} (Script)
+    name: Build x86/64 - ${{ matrix.node_type }} (Script - Legacy)
     runs-on: ubuntu-latest
-    if: github.event.inputs.build_method == 'script'
+    if: false  # Disabled - using virt-builder instead
 
     strategy:
       fail-fast: false
@@ -220,7 +210,7 @@ jobs:
   create-manifest:
     name: Create x86/64 Manifest
     runs-on: ubuntu-latest
-    needs: [build-packer]
+    needs: [build-images]
     if: always() && (github.event_name == 'release' || github.event.inputs.node_type == 'all')
 
     steps:
@@ -295,7 +285,7 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-packer, build-script]
+    needs: [build-images]
     if: always()
 
     steps:
