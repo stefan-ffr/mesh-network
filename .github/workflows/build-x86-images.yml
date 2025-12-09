@@ -98,15 +98,16 @@ jobs:
           fi
 
       - name: Build with virt-builder
+        env:
+          LIBGUESTFS_BACKEND: direct
         run: |
           # Use virt-builder instead of Packer (works without KVM)
           mkdir -p images/output
 
           # Build Debian image with virt-builder
           virt-builder debian-12 \
-            --size 8G \
             --format qcow2 \
-            --output images/output/mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64.qcow2 \
+            --output images/output/mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64-base.qcow2 \
             --hostname mesh-${{ matrix.node_type }} \
             --install frr,etcd,docker.io,git,curl,python3-pip \
             --root-password password:mesh \
@@ -119,6 +120,11 @@ jobs:
             --run-command 'echo "MESH_VERSION=${{ env.MESH_VERSION }}" > /etc/mesh-network-version' \
             --run-command 'echo "NODE_TYPE=${{ matrix.node_type }}" >> /etc/mesh-network-version' \
             --selinux-relabel
+
+          # Resize separately using qemu-img (avoids libguestfs resize issues)
+          qemu-img resize images/output/mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64-base.qcow2 8G
+          mv images/output/mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64-base.qcow2 \
+             images/output/mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}-x86_64.qcow2
 
           # Convert to other formats
           cd images/output
