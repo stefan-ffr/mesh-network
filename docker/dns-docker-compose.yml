@@ -22,17 +22,13 @@ services:
 
   # Unbound DNS Cache
   unbound:
-    image: lscr.io/linuxserver/unbound:latest
+    image: alpinelinux/unbound:latest
     container_name: mesh-unbound
     restart: unless-stopped
     network_mode: host
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
     volumes:
-      - ./configs/unbound/unbound.conf:/config/unbound/unbound.conf:ro
-      - unbound-data:/config
+      - ./configs/unbound/unbound.conf:/etc/unbound/unbound.conf:ro
+      - unbound-data:/etc/unbound
     healthcheck:
       test: ["CMD", "drill", "@127.0.0.1", "-p", "5353", "cloudflare.com"]
       interval: 30s
