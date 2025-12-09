@@ -29,6 +29,10 @@ on:
 env:
   MESH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   build:
     name: Build Pi Image - ${{ matrix.node_type }}

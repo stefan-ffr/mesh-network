@@ -26,6 +26,10 @@ on:
 env:
   MESH_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   build-images:
     name: Build x86/64 - ${{ matrix.node_type }}
