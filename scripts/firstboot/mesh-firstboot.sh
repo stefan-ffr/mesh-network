@@ -169,6 +169,38 @@ case "$NODE_TYPE" in
         systemctl enable glusterd smbd nfs-kernel-server || true
         mkdir -p /srv/data-node/{ipfs,minio,gluster,backups,shares}
         ;;
+    dns-server)
+        echo "Installing packages for automatic DNS server..."
+        # Unbound as primary recursive + authoritative DNS
+        apt-get install -y unbound unbound-anchor || true
+        # mDNS/Avahi for zero-config discovery
+        apt-get install -y avahi-daemon avahi-utils libnss-mdns || true
+        # DNS utilities
+        apt-get install -y bind9-dnsutils dnsmasq || true
+        # Configure Unbound for .mesh domain
+        mkdir -p /etc/unbound/unbound.conf.d
+        cat > /etc/unbound/unbound.conf.d/mesh.conf << 'UNBOUNDCONF'
+server:
+    interface: 0.0.0.0
+    access-control: 10.0.0.0/8 allow
+    access-control: 172.16.0.0/12 allow
+    access-control: 192.168.0.0/16 allow
+    access-control: 127.0.0.0/8 allow
+    local-zone: "mesh." static
+    local-data: "mesh. IN SOA ns.mesh. admin.mesh. 1 3600 1200 604800 86400"
+    local-data: "mesh. IN NS ns.mesh."
+    include: /etc/unbound/mesh-hosts.conf
+forward-zone:
+    name: "."
+    forward-addr: 1.1.1.1
+    forward-addr: 8.8.8.8
+    forward-first: yes
+UNBOUNDCONF
+        touch /etc/unbound/mesh-hosts.conf
+        systemctl enable unbound avahi-daemon || true
+        systemctl disable dnsmasq || true
+        mkdir -p /opt/mesh-network/dns /var/lib/mesh-dns
+        ;;
 esac
 
 # Create mesh network directories

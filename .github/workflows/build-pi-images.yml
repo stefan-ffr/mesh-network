@@ -23,6 +23,7 @@ on:
           - portable-gateway
           - comm-hub
           - data-node
+          - dns-server
       version:
         description: 'Image version'
         required: true
@@ -44,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node_type: ${{ (github.event.inputs.node_type == 'all' || github.event_name == 'release') && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring", "emergency", "portable-gateway", "comm-hub", "data-node"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type || 'monitoring')) }}
+        node_type: ${{ (github.event.inputs.node_type == 'all' || github.event_name == 'release') && fromJSON('["mesh-router", "lan-router", "gateway-wifi", "gateway-wired", "update-cache", "monitoring", "emergency", "portable-gateway", "comm-hub", "data-node", "dns-server"]') || fromJSON(format('["{0}"]', github.event.inputs.node_type || 'monitoring')) }}
 
     steps:
       - name: Checkout repository
@@ -259,6 +260,7 @@ jobs:
           - Portable Gateway (LTE/5G/Starlink)
           - Comm Hub (Matrix + Mumble + IRC)
           - Data Node (Distributed Storage)
+          - DNS Server (Automatic .mesh Domain)
 
           ## Download
           Check the Artifacts section above or the Release page for downloads.
