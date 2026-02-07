@@ -1,0 +1,20 @@
+[Unit]
+Description=Mesh Network P2P IPAM (runs on every node)
+After=network.target
+Before=mesh-dns-register.service
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/mesh-network/ipam/mesh-ipam-p2p.py
+Restart=always
+RestartSec=10
+
+# Read node type from config
+EnvironmentFile=-/boot/firmware/mesh-config.txt
+EnvironmentFile=-/etc/mesh-network/node.conf
+
+Environment=IPAM_DB_PATH=/var/lib/mesh-network/ipam.db
+
+[Install]
+WantedBy=multi-user.target

@@ -281,6 +281,127 @@ mkdir -p /etc/mesh-network
 mkdir -p /var/lib/mesh-network
 mkdir -p /var/log/mesh-network
 mkdir -p /opt/mesh-network/dns-api
+mkdir -p /opt/mesh-network/ipam
+
+# Setup P2P IPAM (runs on EVERY node - no central server)
+echo "Setting up P2P IPAM..."
+cat > /opt/mesh-network/ipam/ipam-p2p.py << 'IPAMSCRIPT'
+#!/usr/bin/env python3
+"""Minimal P2P IPAM - runs on every node"""
+import json, socket, struct, threading, time, sqlite3, random, os
+from pathlib import Path
+
+MCAST_GROUP, MCAST_PORT = '239.255.77.70', 5382
+DB_PATH = '/var/lib/mesh-network/ipam.db'
+HOSTNAME = os.environ.get('HOSTNAME', socket.gethostname())
+NODE_TYPE = os.environ.get('MESH_NODE_TYPE', 'default')
+RANGES = {'mesh-router':'10.10.1.0/24','lan-router':'10.10.2.0/24','gateway':'10.10.3.0/24',
+          'monitoring':'10.10.4.0/24','dns-server':'10.10.5.0/24','emergency':'10.10.6.0/24',
+          'default':'10.10.100.0/24'}
+known_ips = {}
+my_ip = None
+
+def init_db():
+    Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('CREATE TABLE IF NOT EXISTS ips(ip TEXT PRIMARY KEY,host TEXT,expires INT)')
+    conn.execute('CREATE TABLE IF NOT EXISTS myip(id INT PRIMARY KEY,ip TEXT,expires INT)')
+    conn.commit(); conn.close()
+
+def send_mcast(msg):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+    s.sendto(json.dumps(msg).encode(), (MCAST_GROUP, MCAST_PORT)); s.close()
+
+def get_free_ip():
+    import ipaddress
+    net = ipaddress.ip_network(RANGES.get(NODE_TYPE, RANGES['default']))
+    used = set(known_ips.keys())
+    candidates = [str(ip) for ip in net.hosts() if not str(ip).endswith('.1')]
+    random.shuffle(candidates)
+    for ip in candidates:
+        if ip not in used: return ip
+    return None
+
+def request_ip():
+    global my_ip
+    # Check existing
+    conn = sqlite3.connect(DB_PATH)
+    r = conn.execute('SELECT ip,expires FROM myip WHERE id=1').fetchone()
+    conn.close()
+    if r and r[1] > time.time(): my_ip = r[0]; return r[0]
+
+    ip = get_free_ip()
+    if not ip: return None
+    send_mcast({'t':'req','ip':ip,'h':HOSTNAME,'ts':int(time.time())})
+    time.sleep(2)
+    if ip in known_ips and known_ips[ip] != HOSTNAME: return request_ip()
+
+    expires = int(time.time()) + 86400
+    send_mcast({'t':'claim','ip':ip,'h':HOSTNAME,'exp':expires})
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute('INSERT OR REPLACE INTO myip VALUES(1,?,?)', (ip, expires))
+    conn.execute('INSERT OR REPLACE INTO ips VALUES(?,?,?)', (ip, HOSTNAME, expires))
+    conn.commit(); conn.close()
+    known_ips[ip] = HOSTNAME
+    my_ip = ip
+    return ip
+
+def listener():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('', MCAST_PORT))
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                 struct.pack('4sl', socket.inet_aton(MCAST_GROUP), socket.INADDR_ANY))
+    while True:
+        try:
+            data, _ = s.recvfrom(4096)
+            m = json.loads(data.decode())
+            if m.get('h') == HOSTNAME: continue
+            if m.get('t') in ('claim', 'announce'):
+                known_ips[m['ip']] = m['h']
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute('INSERT OR REPLACE INTO ips VALUES(?,?,?)',
+                            (m['ip'], m['h'], m.get('exp', int(time.time())+86400)))
+                conn.commit(); conn.close()
+        except: pass
+
+def announcer():
+    while True:
+        time.sleep(60)
+        if my_ip: send_mcast({'t':'announce','ip':my_ip,'h':HOSTNAME,'exp':int(time.time())+86400})
+
+if __name__ == '__main__':
+    init_db()
+    threading.Thread(target=listener, daemon=True).start()
+    send_mcast({'t':'query','h':HOSTNAME}); time.sleep(2)
+    ip = request_ip()
+    if ip:
+        import subprocess
+        subprocess.run(['ip','addr','add',f'{ip}/24','dev','eth0'], capture_output=True)
+        subprocess.run(['ip','link','set','eth0','up'], capture_output=True)
+        print(f'[IPAM] Configured: {ip}')
+        threading.Thread(target=announcer, daemon=True).start()
+        while True: time.sleep(3600)
+IPAMSCRIPT
+chmod +x /opt/mesh-network/ipam/ipam-p2p.py
+
+# Create P2P IPAM service
+cat > /etc/systemd/system/mesh-ipam.service << 'IPAMSVC'
+[Unit]
+Description=Mesh P2P IPAM
+After=network.target
+Before=mesh-dns-register.service
+[Service]
+Type=simple
+EnvironmentFile=-/boot/firmware/mesh-config.txt
+ExecStart=/usr/bin/python3 /opt/mesh-network/ipam/ipam-p2p.py
+Restart=always
+RestartSec=10
+[Install]
+WantedBy=multi-user.target
+IPAMSVC
+systemctl enable mesh-ipam.service || true
 
 # Setup DNS with Anycast IP (shared by all DNS servers via OSPF)
 # All clients just use 10.10.255.53 - OSPF routes to nearest healthy DNS
