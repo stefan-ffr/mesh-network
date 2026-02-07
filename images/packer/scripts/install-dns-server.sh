@@ -233,7 +233,7 @@ sudo unbound-anchor -a /var/lib/unbound/root.key || true
 
 # Install Python Flask for DNS API
 echo "Installing DNS API dependencies..."
-sudo apt-get install -y python3-flask python3-pip || true
+sudo apt-get install -y python3-flask python3-requests python3-pip || true
 
 # Note: The API scripts are deployed via firstboot or manually
 # They should be copied to /opt/mesh-network/dns-api/
@@ -244,12 +244,16 @@ echo "Services:"
 echo "  - Unbound: Primary DNS with .mesh zone (port 53)"
 echo "  - Avahi: mDNS/DNS-SD discovery"
 echo "  - DNS API: REST API on port 5380"
-echo "  - Auto-update: Discovers nodes every 5 minutes"
+echo "  - Multicast: Discovery on 239.255.77.69:5381"
+echo "  - Auto-sync: Between DNS servers"
 echo ""
 echo "API Endpoints:"
 echo "  POST /api/v1/register   - Register a node"
 echo "  POST /api/v1/heartbeat  - Send heartbeat"
 echo "  GET  /api/v1/nodes      - List all nodes"
+echo "  GET  /api/v1/peers      - List DNS peers"
 echo "  GET  /api/v1/discover/X - Find service X"
+echo "  POST /api/v1/sync       - Force sync with peers"
 echo ""
+echo "Multicast Group: 239.255.77.69:5381"
 echo "Register nodes: /opt/mesh-network/dns-api/mesh-dns-client.sh register"

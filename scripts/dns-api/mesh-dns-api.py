@@ -415,9 +415,24 @@ if __name__ == '__main__':
     # Run with gunicorn in production
     port = int(os.environ.get('DNS_API_PORT', '5380'))
     debug = os.environ.get('DNS_API_DEBUG', 'false').lower() == 'true'
+    enable_multicast = os.environ.get('DNS_MULTICAST', 'true').lower() == 'true'
 
     print(f"Mesh DNS API starting on port {port}")
     print(f"Database: {DB_PATH}")
     print(f"Hosts file: {HOSTS_FILE}")
+
+    # Start multicast discovery if enabled
+    if enable_multicast:
+        try:
+            from mesh_dns_multicast import start_multicast, register_peer_routes
+            register_peer_routes(app)
+            start_multicast()
+            print("Multicast discovery: ENABLED")
+        except ImportError:
+            print("Multicast discovery: DISABLED (module not found)")
+        except Exception as e:
+            print(f"Multicast discovery: FAILED ({e})")
+    else:
+        print("Multicast discovery: DISABLED")
 
     app.run(host='0.0.0.0', port=port, debug=debug)

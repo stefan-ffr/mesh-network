@@ -1,0 +1,27 @@
+[Unit]
+Description=Mesh DNS Multicast Discovery & Sync (Standalone)
+After=network.target mesh-dns-api.service
+Wants=mesh-dns-api.service
+
+# Use this service if running multicast separately from API
+# By default, multicast is integrated into mesh-dns-api.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/mesh-network/dns-api
+ExecStart=/usr/bin/python3 /opt/mesh-network/dns-api/mesh-dns-multicast.py
+Restart=always
+RestartSec=10
+
+# Environment
+Environment=DNS_MCAST_GROUP=239.255.77.69
+Environment=DNS_MCAST_PORT=5381
+Environment=DNS_API_PORT=5380
+Environment=DNS_ANNOUNCE_INTERVAL=30
+Environment=DNS_SYNC_INTERVAL=60
+Environment=DNS_DB_PATH=/var/lib/mesh-dns/nodes.db
+
+[Install]
+WantedBy=multi-user.target
