@@ -1,0 +1,26 @@
+[Unit]
+Description=Mesh Network Distributed IPAM
+After=network-online.target mesh-dns-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/mesh-network/ipam/mesh-ipam.py
+Restart=always
+RestartSec=5
+
+# Environment
+Environment=IPAM_DB_PATH=/var/lib/mesh-ipam/ipam.db
+Environment=IPAM_API_PORT=5381
+Environment=IPAM_MCAST_GROUP=239.255.77.70
+Environment=IPAM_MCAST_PORT=5382
+Environment=IPAM_LEASE_TIME=86400
+Environment=DNS_API=http://10.10.255.53:5380
+
+# IP Ranges per node type
+Environment=IPAM_RANGES={"mesh-router":"10.10.1.0/24","lan-router":"10.10.2.0/24","gateway":"10.10.3.0/24","monitoring":"10.10.4.0/24","dns-server":"10.10.5.0/24","emergency":"10.10.6.0/24","comm-hub":"10.10.7.0/24","data-node":"10.10.8.0/24","default":"10.10.100.0/24"}
+
+[Install]
+WantedBy=multi-user.target
