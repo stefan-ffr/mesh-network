@@ -215,6 +215,121 @@ mkdir -p /opt/mesh-network
 mkdir -p /etc/mesh-network
 mkdir -p /var/lib/mesh-network
 mkdir -p /var/log/mesh-network
+mkdir -p /opt/mesh-network/dns-api
+
+# Setup DNS discovery for ALL nodes (find DNS servers via multicast)
+echo "Setting up DNS discovery..."
+cat > /opt/mesh-network/dns-api/discover-dns.sh << 'DISCOVERSCRIPT'
+#!/bin/bash
+# Discover mesh DNS servers via multicast 239.255.77.69:5381
+
+MCAST_GROUP="239.255.77.69"
+MCAST_PORT="5381"
+TIMEOUT=5
+
+python3 << 'PYEND' 2>/dev/null
+import socket, struct, json, time, sys
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try: sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+except: pass
+sock.bind(('', 5381))
+sock.settimeout(5)
+
+mreq = struct.pack('4sl', socket.inet_aton('239.255.77.69'), socket.INADDR_ANY)
+sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+servers = set()
+start = time.time()
+while time.time() - start < 5:
+    try:
+        data, addr = sock.recvfrom(4096)
+        msg = json.loads(data.decode())
+        if msg.get('type') == 'dns-announce':
+            servers.add(addr[0])
+            print(f"Found DNS: {msg.get('hostname')} at {addr[0]}", file=sys.stderr)
+    except: break
+
+for ip in servers: print(ip)
+sock.close()
+PYEND
+DISCOVERSCRIPT
+chmod +x /opt/mesh-network/dns-api/discover-dns.sh
+
+# Create resolver configuration script
+cat > /opt/mesh-network/dns-api/configure-resolver.sh << 'RESOLVERSCRIPT'
+#!/bin/bash
+# Configure DNS resolver with discovered mesh DNS servers
+
+DNS_SERVERS=$(/opt/mesh-network/dns-api/discover-dns.sh 2>/dev/null)
+
+if [ -z "$DNS_SERVERS" ]; then
+    echo "No DNS servers found, using fallback"
+    exit 0
+fi
+
+# Configure /etc/resolv.conf
+{
+    echo "# Mesh Network DNS - $(date)"
+    echo "search mesh local"
+    for ip in $DNS_SERVERS; do
+        echo "nameserver $ip"
+    done
+    echo "nameserver 1.1.1.1"
+} > /etc/resolv.conf.mesh
+
+# Apply based on system type
+if systemctl is-active --quiet systemd-resolved; then
+    mkdir -p /etc/systemd/resolved.conf.d/
+    DNS_LIST=$(echo $DNS_SERVERS | tr '\n' ' ')
+    cat > /etc/systemd/resolved.conf.d/mesh.conf << EOF
+[Resolve]
+DNS=$DNS_LIST 1.1.1.1
+Domains=~mesh
+EOF
+    systemctl restart systemd-resolved
+elif [ ! -L /etc/resolv.conf ]; then
+    cp /etc/resolv.conf.mesh /etc/resolv.conf
+fi
+
+echo "DNS configured: $DNS_SERVERS"
+RESOLVERSCRIPT
+chmod +x /opt/mesh-network/dns-api/configure-resolver.sh
+
+# Create systemd service for DNS discovery
+cat > /etc/systemd/system/mesh-dns-discover.service << 'DISCSVC'
+[Unit]
+Description=Discover Mesh DNS Servers
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 5
+ExecStart=/opt/mesh-network/dns-api/configure-resolver.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+DISCSVC
+
+# Create timer for periodic DNS discovery
+cat > /etc/systemd/system/mesh-dns-discover.timer << 'DISCTIMER'
+[Unit]
+Description=Periodic Mesh DNS Discovery
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+DISCTIMER
+
+systemctl enable mesh-dns-discover.service mesh-dns-discover.timer || true
 
 # Setup DNS client for auto-registration (all nodes except dns-server)
 if [ "$NODE_TYPE" != "dns-server" ]; then

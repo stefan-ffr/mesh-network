@@ -1,0 +1,18 @@
+[Unit]
+Description=Discover Mesh DNS Servers
+After=network-online.target
+Wants=network-online.target
+Before=mesh-dns-register.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 10
+ExecStart=/opt/mesh-network/dns-api/mesh-dns-discover.sh discover
+RemainAfterExit=yes
+
+# Retry if no DNS servers found
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
