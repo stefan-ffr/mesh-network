@@ -116,6 +116,59 @@ case "$NODE_TYPE" in
         systemctl enable docker
         apt-get install -y postgresql-client snmp snmpd || true
         ;;
+    emergency)
+        echo "Installing packages for emergency/disaster relief node..."
+        curl -fsSL https://get.docker.com | sh
+        usermod -aG docker pi || true
+        systemctl enable docker
+        # Offline communication
+        apt-get install -y samba samba-common-bin nfs-kernel-server syncthing || true
+        apt-get install -y nginx sqlite3 python3-flask || true
+        # LoRa/Meshtastic support
+        apt-get install -y python3-serial || true
+        systemctl enable smbd nmbd || true
+        mkdir -p /srv/emergency/{files,messages,maps}
+        ;;
+    portable-gateway)
+        echo "Installing packages for portable gateway (LTE/5G/Starlink)..."
+        apt-get install -y modemmanager libqmi-utils libmbim-utils usb-modeswitch || true
+        apt-get install -y wireguard-tools openvpn || true
+        apt-get install -y hostapd dnsmasq wpasupplicant || true
+        apt-get install -y gpsd gpsd-clients || true
+        apt-get install -y vnstat iftop nload || true
+        systemctl unmask hostapd || true
+        systemctl enable ModemManager || true
+        mkdir -p /etc/mesh-network/failover
+        ;;
+    comm-hub)
+        echo "Installing packages for communication hub..."
+        curl -fsSL https://get.docker.com | sh
+        usermod -aG docker pi || true
+        systemctl enable docker
+        # Chat and voice
+        apt-get install -y mumble-server prosody || true
+        apt-get install -y inspircd || apt-get install -y ngircd || true
+        # Email
+        apt-get install -y postfix dovecot-imapd || true
+        # Service discovery
+        apt-get install -y avahi-daemon avahi-utils dnsmasq || true
+        systemctl enable mumble-server avahi-daemon || true
+        mkdir -p /srv/comm-hub/{matrix,files,mail}
+        ;;
+    data-node)
+        echo "Installing packages for distributed data node..."
+        curl -fsSL https://get.docker.com | sh
+        usermod -aG docker pi || true
+        systemctl enable docker
+        # Distributed storage
+        apt-get install -y glusterfs-server glusterfs-client || true
+        apt-get install -y syncthing restic borgbackup || true
+        # File sharing
+        apt-get install -y samba samba-common-bin nfs-kernel-server || true
+        apt-get install -y lvm2 mdadm smartmontools || true
+        systemctl enable glusterd smbd nfs-kernel-server || true
+        mkdir -p /srv/data-node/{ipfs,minio,gluster,backups,shares}
+        ;;
 esac
 
 # Create mesh network directories
