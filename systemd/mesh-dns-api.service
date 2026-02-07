@@ -1,0 +1,31 @@
+[Unit]
+Description=Mesh Network DNS Registration API
+After=network.target unbound.service
+Wants=unbound.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/mesh-network/dns-api
+ExecStart=/usr/bin/python3 /opt/mesh-network/dns-api/mesh-dns-api.py
+Restart=always
+RestartSec=5
+
+# Environment
+Environment=DNS_DB_PATH=/var/lib/mesh-dns/nodes.db
+Environment=DNS_HOSTS_FILE=/etc/unbound/mesh-hosts.conf
+Environment=DNS_API_PORT=5380
+Environment=MESH_DOMAIN=mesh
+Environment=DNS_TTL=300
+# Optional: Set API token for authentication
+# Environment=DNS_API_TOKEN=your-secret-token
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

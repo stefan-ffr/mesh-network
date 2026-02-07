@@ -175,8 +175,8 @@ case "$NODE_TYPE" in
         apt-get install -y unbound unbound-anchor || true
         # mDNS/Avahi for zero-config discovery
         apt-get install -y avahi-daemon avahi-utils libnss-mdns || true
-        # DNS utilities
-        apt-get install -y bind9-dnsutils dnsmasq || true
+        # DNS utilities and API dependencies
+        apt-get install -y bind9-dnsutils python3-flask || true
         # Configure Unbound for .mesh domain
         mkdir -p /etc/unbound/unbound.conf.d
         cat > /etc/unbound/unbound.conf.d/mesh.conf << 'UNBOUNDCONF'
@@ -189,6 +189,7 @@ server:
     local-zone: "mesh." static
     local-data: "mesh. IN SOA ns.mesh. admin.mesh. 1 3600 1200 604800 86400"
     local-data: "mesh. IN NS ns.mesh."
+    local-data: "dns.mesh. 300 IN A 127.0.0.1"
     include: /etc/unbound/mesh-hosts.conf
 forward-zone:
     name: "."
@@ -197,9 +198,15 @@ forward-zone:
     forward-first: yes
 UNBOUNDCONF
         touch /etc/unbound/mesh-hosts.conf
+        # Enable unbound control for API
+        unbound-control-setup 2>/dev/null || true
         systemctl enable unbound avahi-daemon || true
         systemctl disable dnsmasq || true
-        mkdir -p /opt/mesh-network/dns /var/lib/mesh-dns
+        mkdir -p /opt/mesh-network/dns-api /var/lib/mesh-dns
+        # Enable DNS API if service file exists
+        if [ -f /etc/systemd/system/mesh-dns-api.service ]; then
+            systemctl enable mesh-dns-api || true
+        fi
         ;;
 esac
 
@@ -208,6 +215,71 @@ mkdir -p /opt/mesh-network
 mkdir -p /etc/mesh-network
 mkdir -p /var/lib/mesh-network
 mkdir -p /var/log/mesh-network
+
+# Setup DNS client for auto-registration (all nodes except dns-server)
+if [ "$NODE_TYPE" != "dns-server" ]; then
+    echo "Setting up DNS auto-registration..."
+    mkdir -p /opt/mesh-network/dns-api
+
+    # Create simple registration script
+    cat > /opt/mesh-network/dns-api/register.sh << 'REGSCRIPT'
+#!/bin/bash
+# Register with mesh DNS server
+DNS_SERVER="${MESH_DNS_SERVER:-dns.mesh}"
+HOSTNAME=$(hostname)
+IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)
+NODE_TYPE=$(grep MESH_NODE_TYPE /boot/firmware/mesh-config.txt 2>/dev/null | cut -d= -f2 || echo "unknown")
+
+[ -z "$IPV4" ] && exit 1
+
+curl -s -X POST -H "Content-Type: application/json" \
+    -d "{\"hostname\":\"$HOSTNAME\",\"ipv4\":\"$IPV4\",\"node_type\":\"$NODE_TYPE\"}" \
+    "http://${DNS_SERVER}:5380/api/v1/register" 2>/dev/null || true
+REGSCRIPT
+    chmod +x /opt/mesh-network/dns-api/register.sh
+
+    # Create systemd service for registration
+    cat > /etc/systemd/system/mesh-dns-register.service << 'REGSVC'
+[Unit]
+Description=Register with Mesh DNS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 30
+ExecStart=/opt/mesh-network/dns-api/register.sh
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+REGSVC
+
+    # Create timer for periodic heartbeat
+    cat > /etc/systemd/system/mesh-dns-heartbeat.timer << 'HBTIMER'
+[Unit]
+Description=Mesh DNS Heartbeat
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+HBTIMER
+
+    cat > /etc/systemd/system/mesh-dns-heartbeat.service << 'HBSVC'
+[Unit]
+Description=Mesh DNS Heartbeat
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/dns-api/register.sh
+HBSVC
+
+    systemctl enable mesh-dns-register.service mesh-dns-heartbeat.timer || true
+fi
 
 # Write version info
 cat > /etc/mesh-network-version << EOF

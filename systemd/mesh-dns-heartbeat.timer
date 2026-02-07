@@ -1,0 +1,10 @@
+[Unit]
+Description=Send heartbeat to Mesh DNS server
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

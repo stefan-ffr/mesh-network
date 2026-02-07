@@ -1,0 +1,16 @@
+[Unit]
+Description=Register this node with Mesh DNS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/dns-api/mesh-dns-client.sh register
+RemainAfterExit=yes
+
+# Retry if DNS server not yet available
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

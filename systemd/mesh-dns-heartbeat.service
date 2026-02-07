@@ -1,0 +1,7 @@
+[Unit]
+Description=Send heartbeat to Mesh DNS server
+After=network-online.target mesh-dns-register.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/dns-api/mesh-dns-client.sh heartbeat

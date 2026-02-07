@@ -226,15 +226,30 @@ sudo systemctl disable dnsmasq || true
 # Create DNS directories
 sudo mkdir -p /var/lib/mesh-dns
 sudo mkdir -p /var/log/mesh-dns
+sudo mkdir -p /opt/mesh-network/dns-api
 
 # Initialize unbound-anchor for DNSSEC
 sudo unbound-anchor -a /var/lib/unbound/root.key || true
+
+# Install Python Flask for DNS API
+echo "Installing DNS API dependencies..."
+sudo apt-get install -y python3-flask python3-pip || true
+
+# Note: The API scripts are deployed via firstboot or manually
+# They should be copied to /opt/mesh-network/dns-api/
 
 echo "=== DNS server packages installed successfully ==="
 echo ""
 echo "Services:"
 echo "  - Unbound: Primary DNS with .mesh zone (port 53)"
 echo "  - Avahi: mDNS/DNS-SD discovery"
+echo "  - DNS API: REST API on port 5380"
 echo "  - Auto-update: Discovers nodes every 5 minutes"
 echo ""
-echo "Register nodes: /opt/mesh-network/dns/register-node.sh <hostname> <ip>"
+echo "API Endpoints:"
+echo "  POST /api/v1/register   - Register a node"
+echo "  POST /api/v1/heartbeat  - Send heartbeat"
+echo "  GET  /api/v1/nodes      - List all nodes"
+echo "  GET  /api/v1/discover/X - Find service X"
+echo ""
+echo "Register nodes: /opt/mesh-network/dns-api/mesh-dns-client.sh register"
