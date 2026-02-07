@@ -203,6 +203,71 @@ UNBOUNDCONF
         systemctl enable unbound avahi-daemon || true
         systemctl disable dnsmasq || true
         mkdir -p /opt/mesh-network/dns-api /var/lib/mesh-dns
+
+        # Setup Anycast IP (shared by all DNS servers)
+        ANYCAST_IP="10.10.255.53"
+        echo "Setting up DNS Anycast IP: ${ANYCAST_IP}"
+
+        # Add anycast IP to loopback
+        cat > /etc/networkd-dispatcher/routable.d/50-dns-anycast << ANYCASTSCRIPT
+#!/bin/bash
+ip addr add ${ANYCAST_IP}/32 dev lo label lo:dns 2>/dev/null || true
+ANYCASTSCRIPT
+        chmod +x /etc/networkd-dispatcher/routable.d/50-dns-anycast 2>/dev/null || true
+
+        # Configure Unbound to listen on anycast IP
+        cat > /etc/unbound/unbound.conf.d/anycast.conf << ANYCASTCONF
+server:
+    interface: ${ANYCAST_IP}
+    interface: 0.0.0.0
+ANYCASTCONF
+
+        # OSPF announcement for anycast (if FRR installed)
+        if [ -f /etc/frr/frr.conf ]; then
+            cat >> /etc/frr/frr.conf << OSPFCONF
+! DNS Anycast
+router ospf
+ redistribute connected route-map DNS-ANYCAST
+!
+route-map DNS-ANYCAST permit 10
+ match ip address prefix-list DNS-ANYCAST-PREFIX
+!
+ip prefix-list DNS-ANYCAST-PREFIX seq 5 permit ${ANYCAST_IP}/32
+OSPFCONF
+        fi
+
+        # Health check - withdraw if unhealthy
+        cat > /opt/mesh-network/dns-api/dns-healthcheck.sh << 'HEALTHSCRIPT'
+#!/bin/bash
+ANYCAST_IP="10.10.255.53"
+if dig +short +time=1 @127.0.0.1 mesh SOA >/dev/null 2>&1; then
+    ip addr add ${ANYCAST_IP}/32 dev lo 2>/dev/null || true
+else
+    ip addr del ${ANYCAST_IP}/32 dev lo 2>/dev/null || true
+    logger "DNS unhealthy - withdrawing anycast"
+fi
+HEALTHSCRIPT
+        chmod +x /opt/mesh-network/dns-api/dns-healthcheck.sh
+
+        # Health check timer
+        cat > /etc/systemd/system/mesh-dns-healthcheck.timer << 'HCTIMER'
+[Unit]
+Description=DNS Health Check
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=10
+[Install]
+WantedBy=timers.target
+HCTIMER
+        cat > /etc/systemd/system/mesh-dns-healthcheck.service << 'HCSERVICE'
+[Unit]
+Description=DNS Health Check
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/dns-api/dns-healthcheck.sh
+HCSERVICE
+        systemctl enable mesh-dns-healthcheck.timer || true
+
         # Enable DNS API if service file exists
         if [ -f /etc/systemd/system/mesh-dns-api.service ]; then
             systemctl enable mesh-dns-api || true
@@ -217,130 +282,46 @@ mkdir -p /var/lib/mesh-network
 mkdir -p /var/log/mesh-network
 mkdir -p /opt/mesh-network/dns-api
 
-# Setup DNS discovery for ALL nodes (find DNS servers via multicast)
-echo "Setting up DNS discovery..."
-cat > /opt/mesh-network/dns-api/discover-dns.sh << 'DISCOVERSCRIPT'
-#!/bin/bash
-# Discover mesh DNS servers via multicast 239.255.77.69:5381
+# Setup DNS with Anycast IP (shared by all DNS servers via OSPF)
+# All clients just use 10.10.255.53 - OSPF routes to nearest healthy DNS
+ANYCAST_DNS="10.10.255.53"
+echo "Configuring DNS with Anycast IP: ${ANYCAST_DNS}"
 
-MCAST_GROUP="239.255.77.69"
-MCAST_PORT="5381"
-TIMEOUT=5
-
-python3 << 'PYEND' 2>/dev/null
-import socket, struct, json, time, sys
-
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-try: sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-except: pass
-sock.bind(('', 5381))
-sock.settimeout(5)
-
-mreq = struct.pack('4sl', socket.inet_aton('239.255.77.69'), socket.INADDR_ANY)
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-
-servers = set()
-start = time.time()
-while time.time() - start < 5:
-    try:
-        data, addr = sock.recvfrom(4096)
-        msg = json.loads(data.decode())
-        if msg.get('type') == 'dns-announce':
-            servers.add(addr[0])
-            print(f"Found DNS: {msg.get('hostname')} at {addr[0]}", file=sys.stderr)
-    except: break
-
-for ip in servers: print(ip)
-sock.close()
-PYEND
-DISCOVERSCRIPT
-chmod +x /opt/mesh-network/dns-api/discover-dns.sh
-
-# Create resolver configuration script
-cat > /opt/mesh-network/dns-api/configure-resolver.sh << 'RESOLVERSCRIPT'
-#!/bin/bash
-# Configure DNS resolver with discovered mesh DNS servers
-
-DNS_SERVERS=$(/opt/mesh-network/dns-api/discover-dns.sh 2>/dev/null)
-
-if [ -z "$DNS_SERVERS" ]; then
-    echo "No DNS servers found, using fallback"
-    exit 0
-fi
-
-# Configure /etc/resolv.conf
-{
-    echo "# Mesh Network DNS - $(date)"
-    echo "search mesh local"
-    for ip in $DNS_SERVERS; do
-        echo "nameserver $ip"
-    done
-    echo "nameserver 1.1.1.1"
-} > /etc/resolv.conf.mesh
-
-# Apply based on system type
-if systemctl is-active --quiet systemd-resolved; then
+# Configure systemd-resolved if present
+if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
     mkdir -p /etc/systemd/resolved.conf.d/
-    DNS_LIST=$(echo $DNS_SERVERS | tr '\n' ' ')
-    cat > /etc/systemd/resolved.conf.d/mesh.conf << EOF
+    cat > /etc/systemd/resolved.conf.d/mesh-anycast.conf << EOF
 [Resolve]
-DNS=$DNS_LIST 1.1.1.1
+DNS=${ANYCAST_DNS}
+FallbackDNS=1.1.1.1 8.8.8.8
 Domains=~mesh
 EOF
-    systemctl restart systemd-resolved
-elif [ ! -L /etc/resolv.conf ]; then
-    cp /etc/resolv.conf.mesh /etc/resolv.conf
+    systemctl restart systemd-resolved || true
 fi
 
-echo "DNS configured: $DNS_SERVERS"
-RESOLVERSCRIPT
-chmod +x /opt/mesh-network/dns-api/configure-resolver.sh
+# Configure /etc/resolv.conf directly (for systems without systemd-resolved)
+if [ ! -L /etc/resolv.conf ] || [ ! -f /run/systemd/resolve/stub-resolv.conf ]; then
+    cat > /etc/resolv.conf << EOF
+# Mesh Network DNS (Anycast)
+# All DNS servers share ${ANYCAST_DNS} via OSPF
+search mesh local
+nameserver ${ANYCAST_DNS}
+nameserver 1.1.1.1
+EOF
+fi
 
-# Create systemd service for DNS discovery
-cat > /etc/systemd/system/mesh-dns-discover.service << 'DISCSVC'
-[Unit]
-Description=Discover Mesh DNS Servers
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-ExecStartPre=/bin/sleep 5
-ExecStart=/opt/mesh-network/dns-api/configure-resolver.sh
-RemainAfterExit=yes
-Restart=on-failure
-RestartSec=30
-
-[Install]
-WantedBy=multi-user.target
-DISCSVC
-
-# Create timer for periodic DNS discovery
-cat > /etc/systemd/system/mesh-dns-discover.timer << 'DISCTIMER'
-[Unit]
-Description=Periodic Mesh DNS Discovery
-
-[Timer]
-OnBootSec=2min
-OnUnitActiveSec=15min
-
-[Install]
-WantedBy=timers.target
-DISCTIMER
-
-systemctl enable mesh-dns-discover.service mesh-dns-discover.timer || true
+echo "DNS configured: ${ANYCAST_DNS} (Anycast)"
 
 # Setup DNS client for auto-registration (all nodes except dns-server)
 if [ "$NODE_TYPE" != "dns-server" ]; then
     echo "Setting up DNS auto-registration..."
     mkdir -p /opt/mesh-network/dns-api
 
-    # Create simple registration script
+    # Create simple registration script (uses Anycast IP)
     cat > /opt/mesh-network/dns-api/register.sh << 'REGSCRIPT'
 #!/bin/bash
-# Register with mesh DNS server
-DNS_SERVER="${MESH_DNS_SERVER:-dns.mesh}"
+# Register with mesh DNS server (Anycast)
+DNS_SERVER="${MESH_DNS_SERVER:-10.10.255.53}"
 HOSTNAME=$(hostname)
 IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)
 NODE_TYPE=$(grep MESH_NODE_TYPE /boot/firmware/mesh-config.txt 2>/dev/null | cut -d= -f2 || echo "unknown")

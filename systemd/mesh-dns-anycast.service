@@ -1,0 +1,19 @@
+[Unit]
+Description=Mesh DNS Anycast Setup
+After=network-online.target frr.service unbound.service
+Wants=frr.service unbound.service
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/dns-api/mesh-dns-anycast.sh setup
+ExecStop=/opt/mesh-network/dns-api/mesh-dns-anycast.sh stop
+RemainAfterExit=yes
+
+# Environment
+Environment=DNS_ANYCAST_IP=10.10.255.53
+Environment=DNS_ANYCAST_PREFIX=32
+Environment=OSPF_AREA=0.0.0.0
+
+[Install]
+WantedBy=multi-user.target
