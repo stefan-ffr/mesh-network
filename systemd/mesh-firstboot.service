@@ -1,0 +1,16 @@
+[Unit]
+Description=Mesh Network First Boot Setup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/opt/mesh-network/.firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mesh-network/firstboot/mesh-firstboot.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

@@ -55,12 +55,58 @@ jobs:
           docker system prune -af
           sudo df -h
 
+      - name: Prepare custom stage
+        run: |
+          # Create custom stage directory structure
+          mkdir -p pi-gen-stage/00-mesh-setup
+
+          # Create script to copy files (runs outside chroot, has access to ROOTFS_DIR)
+          cat > pi-gen-stage/00-mesh-setup/00-run.sh << 'RUNSCRIPT'
+          #!/bin/bash -e
+
+          echo "=== Installing Mesh Network firstboot setup ==="
+
+          # Create directories
+          install -d "${ROOTFS_DIR}/opt/mesh-network/firstboot"
+          install -d "${ROOTFS_DIR}/etc/systemd/system"
+
+          # Copy firstboot script
+          install -m 755 files/mesh-firstboot.sh "${ROOTFS_DIR}/opt/mesh-network/firstboot/"
+
+          # Copy and enable systemd service
+          install -m 644 files/mesh-firstboot.service "${ROOTFS_DIR}/etc/systemd/system/"
+
+          # Enable the service
+          on_chroot << EOF
+          systemctl enable mesh-firstboot.service
+          EOF
+
+          # Create mesh config with node type
+          cat > "${ROOTFS_DIR}/boot/firmware/mesh-config.txt" << EOF
+          # Mesh Network Configuration
+          MESH_NODE_TYPE=${NODE_TYPE:-monitoring}
+          MESH_VERSION=${MESH_VERSION:-1.0.0}
+          EOF
+
+          echo "=== Mesh Network setup complete ==="
+          RUNSCRIPT
+          chmod +x pi-gen-stage/00-mesh-setup/00-run.sh
+
+          # Create files directory and copy scripts
+          mkdir -p pi-gen-stage/00-mesh-setup/files
+          cp scripts/firstboot/mesh-firstboot.sh pi-gen-stage/00-mesh-setup/files/
+          cp systemd/mesh-firstboot.service pi-gen-stage/00-mesh-setup/files/
+
+          # List what we created
+          echo "Custom stage contents:"
+          find pi-gen-stage -type f
+
       - name: Build with pi-gen
         uses: usimd/pi-gen-action@v1
         id: build
         with:
           image-name: mesh-network-${{ matrix.node_type }}-${{ env.MESH_VERSION }}
-          stage-list: stage0 stage1 stage2
+          stage-list: stage0 stage1 stage2 ./pi-gen-stage
           enable-noobs: false
           compression: xz
           compression-level: 6
@@ -74,8 +120,9 @@ jobs:
           wpa-essid: ''
           wpa-password: ''
           enable-ssh: 1
-          extra-host-dependencies: frr
-          extra-host-modules: ''
+        env:
+          NODE_TYPE: ${{ matrix.node_type }}
+          MESH_VERSION: ${{ env.MESH_VERSION }}
 
       - name: Rename and checksum
         run: |
